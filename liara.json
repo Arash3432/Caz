@@ -1,11 +1,4 @@
 {
   "platform": "node",
-  "app": "aria-casino",
-  "port": 3000,
-  "disks": [
-    {
-      "name": "data",
-      "mountTo": "data"
-    }
-  ]
+  "port": 3000
 }

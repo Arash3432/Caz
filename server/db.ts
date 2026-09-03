@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import os from 'os';
 
 export interface User {
   id: string;
@@ -122,7 +123,62 @@ export interface DatabaseSchema {
   taskSubmissions: TaskSubmission[];
 }
 
-const DATA_DIR = path.join(process.cwd(), 'data');
+function resolveDataDirectory(): string {
+  // If DATA_DIR is explicitly passed via environment variable
+  const candidates = [
+    process.env.DATA_DIR,
+    path.join(process.cwd(), 'data'),
+    path.join(os.tmpdir(), 'aria_casino_data'),
+  ].filter(Boolean) as string[];
+
+  for (const candidate of candidates) {
+    try {
+      // Check if candidate exists or is a broken symlink (e.g. unattached Liara disk)
+      try {
+        const lstat = fs.lstatSync(candidate);
+        if (lstat.isSymbolicLink()) {
+          try {
+            fs.statSync(candidate);
+          } catch {
+            // Broken dangling symlink - unlink it so we can create a real directory
+            console.warn(`[Storage] Detected and unlinked broken symlink at: ${candidate}`);
+            fs.unlinkSync(candidate);
+          }
+        }
+      } catch {
+        // Path does not exist yet
+      }
+
+      // Ensure directory exists
+      if (!fs.existsSync(candidate)) {
+        fs.mkdirSync(candidate, { recursive: true });
+      }
+
+      // Test write permissions
+      const probeFile = path.join(candidate, `.probe_${Date.now()}`);
+      fs.writeFileSync(probeFile, 'ok', 'utf-8');
+      fs.unlinkSync(probeFile);
+
+      console.log(`[Storage] Active database storage directory: ${candidate}`);
+      return candidate;
+    } catch (err: any) {
+      console.warn(`[Storage] Directory candidate "${candidate}" unusable: ${err?.message}`);
+    }
+  }
+
+  // Fallback to system temp directory
+  const fallback = path.join(os.tmpdir(), 'aria_fallback_data');
+  try {
+    if (!fs.existsSync(fallback)) {
+      fs.mkdirSync(fallback, { recursive: true });
+    }
+    return fallback;
+  } catch {
+    return os.tmpdir();
+  }
+}
+
+const DATA_DIR = resolveDataDirectory();
 const DB_FILE = path.join(DATA_DIR, 'db.json');
 
 // Helper to hash password
@@ -135,11 +191,6 @@ export function hashPassword(password: string, salt?: string): { hash: string; s
 export function verifyPassword(password: string, hash: string, salt: string): boolean {
   const computedHash = crypto.pbkdf2Sync(password, salt, 1000, 64, 'sha512').toString('hex');
   return computedHash === hash;
-}
-
-// Ensure data directory exists
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
 }
 
 // Initial default settings (calibrated strictly with 10% secret house edge = 90% RTP)
