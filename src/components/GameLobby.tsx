@@ -19,6 +19,7 @@ import {
 import { ActiveGameTab, User } from '../types';
 import { sound } from '../utils/audio';
 import { StepTaskWidget } from './StepTaskWidget';
+import { LiveBetsFeed } from './LiveBetsFeed';
 
 interface GameLobbyProps {
   onSelectGame: (game: ActiveGameTab) => void;
@@ -371,6 +372,9 @@ export const GameLobby: React.FC<GameLobbyProps> = ({
           );
         })}
       </div>
+
+      {/* Live Casino Bets & Big Wins Feed */}
+      <LiveBetsFeed user={user} onSelectGame={onSelectGame} />
 
       {/* Informational Assurance for Beginners */}
       <div className="rounded-2xl border border-slate-800/80 bg-slate-900/40 p-4 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-400">

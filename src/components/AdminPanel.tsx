@@ -37,6 +37,13 @@ import {
   Layers,
   Clock,
   Coins,
+  Download,
+  ZoomIn,
+  ZoomOut,
+  RotateCw,
+  Copy,
+  CheckCheck,
+  Play,
 } from 'lucide-react';
 import { User, AdminLog, Bet, GameSettings, StepTask, TaskSubmission, SubmissionType } from '../types';
 import { sound } from '../utils/audio';
@@ -80,6 +87,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser, onClose }) 
   const [reviewingSub, setReviewingSub] = useState<TaskSubmission | null>(null);
   const [adminReviewNote, setAdminReviewNote] = useState<string>('');
   const [previewModalImage, setPreviewModalImage] = useState<string | null>(null);
+  const [viewingProofSub, setViewingProofSub] = useState<TaskSubmission | null>(null);
+  const [imageZoom, setImageZoom] = useState<number>(1);
+  const [imageRotate, setImageRotate] = useState<number>(0);
+  const [copiedLink, setCopiedLink] = useState<boolean>(false);
 
   // Data states
   const [overview, setOverview] = useState<any>(null);
@@ -309,6 +320,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser, onClose }) 
 
       setMessage({ text: data.message, type: 'success' });
       setReviewingSub(null);
+      if (viewingProofSub && viewingProofSub.id === reviewingSub.id) {
+        setViewingProofSub(null);
+      }
       setAdminReviewNote('');
       fetchAdminTasks();
     } catch (err: any) {
@@ -316,6 +330,74 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser, onClose }) 
     } finally {
       setLoading(false);
     }
+  };
+
+  const getProofCategory = (sub: TaskSubmission): 'image' | 'video' | 'link' | 'text' | 'none' => {
+    if (sub.submissionType === 'image') return 'image';
+    if (sub.submissionType === 'video') return 'video';
+    if (sub.submissionType === 'link') return 'link';
+    if (sub.submissionType === 'text') return 'text';
+    if (sub.submissionType === 'none') return 'none';
+
+    const content = sub.content || '';
+    const fileName = (sub.fileName || '').toLowerCase();
+    if (content.startsWith('data:image/') || fileName.match(/\.(png|jpg|jpeg|webp|gif|bmp|svg|heic)$/i)) {
+      return 'image';
+    }
+    if (
+      content.startsWith('data:video/') ||
+      fileName.match(/\.(mp4|webm|mov|mkv|avi|m4v|3gp)$/i) ||
+      content.includes('youtube.com') ||
+      content.includes('youtu.be') ||
+      content.includes('aparat.com')
+    ) {
+      return 'video';
+    }
+    if (content.startsWith('http://') || content.startsWith('https://')) {
+      return 'link';
+    }
+    return content ? 'text' : 'none';
+  };
+
+  const handleDownloadProofFile = (content: string, rawFileName?: string, subType: string = 'image') => {
+    try {
+      if (!content) return;
+      const isData = content.startsWith('data:');
+      let ext = subType === 'video' ? 'mp4' : 'jpg';
+      if (isData) {
+        const match = content.match(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);/);
+        if (match && match[1]) {
+          const mime = match[1].toLowerCase();
+          if (mime.includes('png')) ext = 'png';
+          else if (mime.includes('jpeg') || mime.includes('jpg')) ext = 'jpg';
+          else if (mime.includes('webp')) ext = 'webp';
+          else if (mime.includes('gif')) ext = 'gif';
+          else if (mime.includes('svg')) ext = 'svg';
+          else if (mime.includes('mp4')) ext = 'mp4';
+          else if (mime.includes('webm')) ext = 'webm';
+          else if (mime.includes('quicktime') || mime.includes('mov')) ext = 'mov';
+          else if (mime.includes('x-matroska') || mime.includes('mkv')) ext = 'mkv';
+        }
+      }
+      const finalName = rawFileName || `madrak_${Date.now()}.${ext}`;
+
+      const link = document.createElement('a');
+      link.href = content;
+      link.download = finalName;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (err) {
+      window.open(content, '_blank');
+    }
+  };
+
+  const handleCopyText = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedLink(true);
+    setTimeout(() => setCopiedLink(false), 2000);
   };
 
   const handleUpdateBalance = async (e: React.FormEvent) => {
@@ -710,6 +792,17 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser, onClose }) 
                           >
                             <Edit className="w-3 h-3" />
                             <span>تغییر موجودی</span>
+                          </button>
+                          <button
+                            onClick={() => {
+                              setActiveTab('tasks');
+                              setTaskSubFilter('all');
+                            }}
+                            className="px-2 py-1 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-300 border border-blue-500/30 font-semibold text-[11px] transition flex items-center gap-1"
+                            title="مشاهده و بررسی مدارک ارسالی این کاربر"
+                          >
+                            <FileText className="w-3 h-3" />
+                            <span>مدارک</span>
                           </button>
                           {u.role !== 'admin' && (
                             <button
@@ -1841,10 +1934,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser, onClose }) 
                   .sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime())
                   .map((sub) => {
                     const task = adminTasks.find((t) => t.id === sub.taskId);
+                    const category = getProofCategory(sub);
+                    const hasProofContent = Boolean(sub.content && sub.content.trim());
+
                     return (
                       <div
                         key={sub.id}
-                        className="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-3 shadow-lg"
+                        className="p-4 rounded-xl bg-slate-900 border border-slate-800 space-y-3 shadow-lg hover:border-slate-700/80 transition"
                       >
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 border-b border-slate-800/80">
                           <div className="flex items-center gap-2 flex-wrap text-xs">
@@ -1852,13 +1948,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser, onClose }) 
                               کاربر: {sub.username}
                             </span>
                             <span className="text-slate-400">
-                              مرحله {task?.stepNumber || '?'}:
+                              مرحله {task?.stepNumber || sub.stepNumber || '?'}:
                             </span>
                             <span className="font-bold text-amber-300">
-                              «{task?.title || 'تسک حذف شده'}»
+                              «{task?.title || sub.taskTitle || 'تسک انجام شده'}»
                             </span>
                             <span className="font-mono text-emerald-400 font-bold">
-                              (+ {task?.reward.toLocaleString('fa-IR')} تومان)
+                              (+ {(task?.reward || sub.reward || 0).toLocaleString('fa-IR')} تومان)
                             </span>
                           </div>
 
@@ -1889,20 +1985,54 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser, onClose }) 
                           </div>
                         </div>
 
-                        {/* Submitted Proof / Content */}
-                        <div className="text-xs space-y-2">
-                          <span className="text-[11px] font-bold text-slate-400 block">
-                            مدرک ارسال شده توسط کاربر:
-                          </span>
+                        {/* Submitted Proof / Content Showcase */}
+                        <div className="text-xs space-y-2.5">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[11px] font-bold text-slate-400 flex items-center gap-1.5">
+                              <span>مدرک ارسال شده توسط کاربر:</span>
+                              <span className="px-2 py-0.5 rounded bg-slate-800 text-[10px] font-mono text-amber-400 font-bold">
+                                {category === 'image'
+                                  ? '📷 تصویر / اسکرین‌شات'
+                                  : category === 'video'
+                                  ? '🎬 فایل ویدیویی'
+                                  : category === 'link'
+                                  ? '🔗 پیوند اینترنتی'
+                                  : category === 'text'
+                                  ? '📝 متن توضیحات'
+                                  : 'بدون مدرک'}
+                              </span>
+                            </span>
 
-                          {sub.proofType === 'image' && sub.proofUrl && (
-                            <div className="flex items-center gap-3">
+                            {hasProofContent && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setViewingProofSub(sub);
+                                  setImageZoom(1);
+                                  setImageRotate(0);
+                                }}
+                                className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 font-bold text-[11px] transition active:scale-95"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                                <span>دیدن مدرک ارسال شده</span>
+                              </button>
+                            )}
+                          </div>
+
+                          {/* Image Proof */}
+                          {category === 'image' && hasProofContent && (
+                            <div className="flex items-center gap-3 p-2.5 rounded-xl bg-slate-950 border border-slate-800">
                               <div
-                                onClick={() => setPreviewModalImage(sub.proofUrl)}
-                                className="relative w-32 h-20 rounded-xl overflow-hidden border border-slate-700 cursor-pointer group bg-black shrink-0"
+                                onClick={() => {
+                                  setViewingProofSub(sub);
+                                  setImageZoom(1);
+                                  setImageRotate(0);
+                                }}
+                                className="relative w-28 h-20 rounded-lg overflow-hidden border border-slate-700 cursor-pointer group bg-black shrink-0"
+                                title="کلیک برای دیدن مدرک در ابعاد بزرگ"
                               >
                                 <img
-                                  src={sub.proofUrl}
+                                  src={sub.content}
                                   alt="مدرک ارسالی"
                                   className="w-full h-full object-cover group-hover:scale-105 transition"
                                 />
@@ -1910,71 +2040,135 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser, onClose }) 
                                   <Eye className="w-5 h-5" />
                                 </div>
                               </div>
-                              <div className="text-slate-400 text-xs">
-                                <span className="block font-medium text-slate-300">
-                                  تصویر اسکرین‌شات
+                              <div className="flex-1 min-w-0 space-y-1.5">
+                                <div className="text-slate-300 font-mono text-xs truncate">
+                                  {sub.fileName || 'تصویر اسکرین‌شات ارسالی'}
+                                </div>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setViewingProofSub(sub);
+                                      setImageZoom(1);
+                                      setImageRotate(0);
+                                    }}
+                                    className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-[11px] flex items-center gap-1 transition"
+                                  >
+                                    <Eye className="w-3.5 h-3.5" />
+                                    <span>دیدن مدرک ارسال شده</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDownloadProofFile(sub.content, sub.fileName, 'image')}
+                                    className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-[11px] flex items-center gap-1 border border-slate-700 transition"
+                                  >
+                                    <Download className="w-3.5 h-3.5 text-amber-400" />
+                                    <span>دانلود عکس مدرک</span>
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Video Proof */}
+                          {category === 'video' && hasProofContent && (
+                            <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <div className="w-7 h-7 rounded-lg bg-purple-500/20 text-purple-400 flex items-center justify-center shrink-0">
+                                    <VideoIcon className="w-4 h-4" />
+                                  </div>
+                                  <span className="text-slate-300 font-mono text-xs truncate">
+                                    {sub.fileName || sub.content.slice(0, 55)}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-2 shrink-0">
+                                  <button
+                                    type="button"
+                                    onClick={() => setViewingProofSub(sub)}
+                                    className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-black text-xs flex items-center gap-1 shadow-md shadow-purple-950 transition"
+                                  >
+                                    <Play className="w-3.5 h-3.5 fill-current" />
+                                    <span>دیدن مدرک ارسال شده</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDownloadProofFile(sub.content, sub.fileName, 'video')}
+                                    className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs flex items-center gap-1 border border-slate-700 transition"
+                                    title="دانلود مستقیم ویدیو"
+                                  >
+                                    <Download className="w-3.5 h-3.5 text-purple-400" />
+                                    <span className="hidden sm:inline">دانلود</span>
+                                  </button>
+                                </div>
+                              </div>
+
+                              {/* Direct in-card video preview */}
+                              {sub.content.startsWith('data:video/') && (
+                                <video
+                                  src={sub.content}
+                                  controls
+                                  preload="metadata"
+                                  className="w-full max-h-48 rounded-lg bg-black object-contain mt-2"
+                                />
+                              )}
+                            </div>
+                          )}
+
+                          {/* Link Proof */}
+                          {category === 'link' && hasProofContent && (
+                            <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <LinkIcon className="w-4 h-4 text-emerald-400 shrink-0" />
+                                <span className="text-slate-300 font-mono text-xs truncate" dir="ltr">
+                                  {sub.content}
                                 </span>
+                              </div>
+                              <div className="flex items-center gap-2 shrink-0">
                                 <button
                                   type="button"
-                                  onClick={() => setPreviewModalImage(sub.proofUrl)}
-                                  className="text-amber-400 hover:underline flex items-center gap-1 text-[11px] mt-1"
+                                  onClick={() => setViewingProofSub(sub)}
+                                  className="px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 border border-emerald-500/40 text-[11px] font-bold flex items-center gap-1"
                                 >
-                                  <span>مشاهده در ابعاد بزرگ</span>
+                                  <Eye className="w-3.5 h-3.5" />
+                                  <span>دیدن مدرک ارسال شده</span>
+                                </button>
+                                <a
+                                  href={sub.content}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 text-[11px] font-bold flex items-center gap-1"
+                                >
+                                  <ExternalLink className="w-3 h-3" />
+                                  <span>باز کردن</span>
+                                </a>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Text Proof */}
+                          {category === 'text' && hasProofContent && (
+                            <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
+                              <div className="text-slate-200 text-xs whitespace-pre-wrap leading-relaxed line-clamp-3">
+                                {sub.content}
+                              </div>
+                              <div className="flex justify-end">
+                                <button
+                                  type="button"
+                                  onClick={() => setViewingProofSub(sub)}
+                                  className="text-amber-400 hover:underline text-[11px] font-bold flex items-center gap-1"
+                                >
                                   <Eye className="w-3 h-3" />
+                                  <span>دیدن مدرک ارسال شده کامل</span>
                                 </button>
                               </div>
                             </div>
                           )}
 
-                          {sub.proofType === 'video' && sub.proofUrl && (
-                            <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                <VideoIcon className="w-4 h-4 text-purple-400" />
-                                <span className="text-slate-300 font-mono text-[11px] max-w-sm truncate">
-                                  {sub.proofUrl}
-                                </span>
-                              </div>
-                              <a
-                                href={sub.proofUrl}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="px-3 py-1 rounded-lg bg-purple-500/20 text-purple-300 hover:bg-purple-500/30 border border-purple-500/40 text-[11px] font-bold flex items-center gap-1"
-                              >
-                                <span>مشاهده ویدیو</span>
-                                <ExternalLink className="w-3 h-3" />
-                              </a>
-                            </div>
-                          )}
-
-                          {sub.proofType === 'link' && sub.proofUrl && (
-                            <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                <LinkIcon className="w-4 h-4 text-emerald-400" />
-                                <span className="text-slate-300 font-mono text-[11px] max-w-md truncate">
-                                  {sub.proofUrl}
-                                </span>
-                              </div>
-                              <a
-                                href={sub.proofUrl}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="px-3 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 border border-emerald-500/40 text-[11px] font-bold flex items-center gap-1"
-                              >
-                                <span>باز کردن لینک</span>
-                                <ExternalLink className="w-3 h-3" />
-                              </a>
-                            </div>
-                          )}
-
-                          {sub.proofType === 'text' && sub.proofText && (
-                            <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-slate-200 text-xs whitespace-pre-wrap leading-relaxed">
-                              {sub.proofText}
-                            </div>
-                          )}
-
-                          {sub.proofType === 'none' && (
-                            <div className="text-slate-400 text-xs italic">
-                              این تسک نیازی به مدرک ارسالی نداشته و توسط کاربر انجام شده است.
+                          {/* None Proof */}
+                          {category === 'none' && (
+                            <div className="text-slate-400 text-xs italic p-2 rounded-lg bg-slate-950/40">
+                              این تسک نیازی به مدرک ارسالی نداشته و توسط کاربر تکمیل شده است.
                             </div>
                           )}
 
@@ -1989,46 +2183,63 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser, onClose }) 
                           )}
                         </div>
 
-                        {/* Review actions */}
-                        <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800/80">
-                          {sub.status === 'pending' ? (
-                            <>
-                              <button
-                                onClick={() => {
-                                  setReviewingSub(sub);
-                                  setAdminReviewNote('مدرک مورد تایید است.');
-                                  handleReviewSubmission('approved');
-                                }}
-                                disabled={loading}
-                                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs transition shadow-lg shadow-emerald-950/50 disabled:opacity-50"
-                              >
-                                <Check className="w-4 h-4" />
-                                <span>تأیید مدرک و واریز جایزه</span>
-                              </button>
-
-                              <button
-                                onClick={() => {
-                                  setReviewingSub(sub);
-                                  setAdminReviewNote('');
-                                }}
-                                disabled={loading}
-                                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/40 font-bold text-xs transition disabled:opacity-50"
-                              >
-                                <X className="w-4 h-4" />
-                                <span>رد مدرک با ذکر دلیل</span>
-                              </button>
-                            </>
-                          ) : (
+                        {/* Review actions & View proof primary button */}
+                        <div className="flex flex-wrap items-center justify-between gap-2 pt-2.5 border-t border-slate-800/80">
+                          {hasProofContent ? (
                             <button
+                              type="button"
                               onClick={() => {
-                                setReviewingSub(sub);
-                                setAdminReviewNote(sub.adminNote || '');
+                                setViewingProofSub(sub);
+                                setImageZoom(1);
+                                setImageRotate(0);
                               }}
-                              className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-bold transition"
+                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-slate-950 font-black text-xs shadow-md shadow-amber-500/20 transition active:scale-95"
                             >
-                              تغییر وضعیت یا ویرایش یادداشت
+                              <Eye className="w-4 h-4" />
+                              <span>دیدن مدرک ارسال شده</span>
                             </button>
-                          )}
+                          ) : <div />}
+
+                          <div className="flex items-center gap-2">
+                            {sub.status === 'pending' ? (
+                              <>
+                                <button
+                                  onClick={() => {
+                                    setReviewingSub(sub);
+                                    setAdminReviewNote('مدرک مورد تایید است.');
+                                    handleReviewSubmission('approved');
+                                  }}
+                                  disabled={loading}
+                                  className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs transition shadow-lg shadow-emerald-950/50 disabled:opacity-50"
+                                >
+                                  <Check className="w-4 h-4" />
+                                  <span>تأیید مدرک و واریز جایزه</span>
+                                </button>
+
+                                <button
+                                  onClick={() => {
+                                    setReviewingSub(sub);
+                                    setAdminReviewNote('');
+                                  }}
+                                  disabled={loading}
+                                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/40 font-bold text-xs transition disabled:opacity-50"
+                                >
+                                  <X className="w-4 h-4" />
+                                  <span>رد مدرک</span>
+                                </button>
+                              </>
+                            ) : (
+                              <button
+                                onClick={() => {
+                                  setReviewingSub(sub);
+                                  setAdminReviewNote(sub.adminNote || '');
+                                }}
+                                className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-bold transition"
+                              >
+                                تغییر وضعیت یا ویرایش یادداشت
+                              </button>
+                            )}
+                          </div>
                         </div>
                       </div>
                     );
@@ -2105,26 +2316,326 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ currentUser, onClose }) 
         </div>
       )}
 
-      {/* FULL IMAGE PREVIEW MODAL */}
-      {previewModalImage && (
+      {/* UNIVERSAL PROOF VIEWER MODAL (دیدن مدرک ارسال شده - عکس، ویدیو، لینک و متن با هر پسوندی و دانلود با امنیت) */}
+      {viewingProofSub && (
         <div
-          className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200"
-          onClick={() => setPreviewModalImage(null)}
+          className="fixed inset-0 z-50 bg-black/95 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 animate-in fade-in duration-200"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setViewingProofSub(null);
+            }
+          }}
         >
-          <div className="relative max-w-3xl max-h-[90vh] p-2 bg-slate-900 border border-slate-700 rounded-2xl overflow-hidden shadow-2xl flex flex-col items-center">
-            <button
-              onClick={() => setPreviewModalImage(null)}
-              className="absolute top-4 right-4 z-10 p-2 rounded-full bg-black/70 text-white hover:bg-black transition"
-            >
-              <X className="w-5 h-5" />
-            </button>
-            <img
-              src={previewModalImage}
-              alt="پیش‌نمایش تصویر کامل"
-              className="max-w-full max-h-[80vh] object-contain rounded-xl"
-            />
-            <div className="py-2 text-xs text-slate-400 font-bold">
-              تصویر ارسالی کاربر (کلیک برای بستن)
+          <div className="relative w-full max-w-4xl bg-slate-900 border border-slate-700 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[94vh]">
+            {/* Modal Header */}
+            <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-800 bg-slate-950/90 shrink-0">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-10 h-10 rounded-2xl bg-amber-500/20 border border-amber-500/40 text-amber-400 flex items-center justify-center shrink-0">
+                  <Eye className="w-5 h-5" />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <h3 className="text-sm font-black text-white">
+                      دیدن مدرک ارسال شده
+                    </h3>
+                    <span
+                      className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                        viewingProofSub.status === 'pending'
+                          ? 'bg-yellow-500/20 text-yellow-300 border-yellow-500/40'
+                          : viewingProofSub.status === 'approved'
+                          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                          : 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                      }`}
+                    >
+                      {viewingProofSub.status === 'pending'
+                        ? 'در انتظار بررسی ⏳'
+                        : viewingProofSub.status === 'approved'
+                        ? 'تأیید شده ✓'
+                        : 'رد شده ✕'}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 truncate mt-0.5">
+                    کاربر: <span className="text-amber-300 font-bold">{viewingProofSub.username}</span> | مرحله {viewingProofSub.stepNumber}: «{viewingProofSub.taskTitle}»
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                {viewingProofSub.content && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handleDownloadProofFile(
+                        viewingProofSub.content,
+                        viewingProofSub.fileName,
+                        getProofCategory(viewingProofSub)
+                      )
+                    }
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black shadow-md shadow-amber-500/20 transition"
+                    title="دانلود فایل ارسالی کاربر"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span className="hidden sm:inline">دانلود فایل مدرک</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setViewingProofSub(null)}
+                  className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Media Content Display */}
+            <div className="flex-1 overflow-auto p-4 flex flex-col items-center justify-center bg-slate-950/70 min-h-[300px]">
+              {/* IMAGE CATEGORY */}
+              {getProofCategory(viewingProofSub) === 'image' && (
+                <div className="w-full flex flex-col items-center justify-center space-y-3">
+                  {/* Image Toolbar */}
+                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900/90 border border-slate-800 text-xs text-slate-300 shadow-md">
+                    <button
+                      type="button"
+                      onClick={() => setImageZoom((prev) => Math.max(0.4, Number((prev - 0.2).toFixed(1))))}
+                      className="p-1 rounded-lg hover:bg-slate-800 text-slate-300 transition"
+                      title="کوچک‌نمایی"
+                    >
+                      <ZoomOut className="w-4 h-4" />
+                    </button>
+                    <span className="font-mono text-xs font-bold text-amber-400 px-1">
+                      {Math.round(imageZoom * 100)}%
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setImageZoom((prev) => Math.min(3, Number((prev + 0.2).toFixed(1))))}
+                      className="p-1 rounded-lg hover:bg-slate-800 text-slate-300 transition"
+                      title="بزرگ‌نمایی"
+                    >
+                      <ZoomIn className="w-4 h-4" />
+                    </button>
+                    <span className="w-px h-4 bg-slate-800 mx-1" />
+                    <button
+                      type="button"
+                      onClick={() => setImageRotate((prev) => (prev + 90) % 360)}
+                      className="flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-slate-800 text-slate-300 transition"
+                      title="چرخش ۹۰ درجه"
+                    >
+                      <RotateCw className="w-3.5 h-3.5" />
+                      <span className="text-[11px]">چرخش</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setImageZoom(1);
+                        setImageRotate(0);
+                      }}
+                      className="flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-slate-800 text-slate-300 transition"
+                      title="تنظیم مجدد"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      <span className="text-[11px]">ریست</span>
+                    </button>
+                  </div>
+
+                  {/* Image Canvas Box */}
+                  <div className="relative max-w-full max-h-[60vh] overflow-hidden flex items-center justify-center p-2 rounded-2xl bg-black/50 border border-slate-800 shadow-inner">
+                    <img
+                      src={viewingProofSub.content}
+                      alt={viewingProofSub.fileName || 'مدرک ارسالی'}
+                      style={{
+                        transform: `scale(${imageZoom}) rotate(${imageRotate}deg)`,
+                        transition: 'transform 0.15s ease-out',
+                      }}
+                      className="max-h-[56vh] max-w-full object-contain rounded-xl select-none"
+                    />
+                  </div>
+
+                  <div className="text-[11px] text-slate-400 font-mono text-center">
+                    نام فایل: {viewingProofSub.fileName || 'تصویر اسکرین‌شات کاربر'}
+                  </div>
+                </div>
+              )}
+
+              {/* VIDEO CATEGORY */}
+              {getProofCategory(viewingProofSub) === 'video' && (
+                <div className="w-full max-w-3xl flex flex-col items-center justify-center space-y-3">
+                  <div className="w-full bg-black rounded-2xl overflow-hidden border border-slate-800 shadow-2xl">
+                    <video
+                      src={viewingProofSub.content}
+                      controls
+                      playsInline
+                      autoPlay
+                      className="w-full max-h-[62vh] rounded-2xl bg-black object-contain"
+                    />
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-between gap-2 w-full px-2 text-xs">
+                    <span className="text-slate-300 font-mono text-[11px] truncate">
+                      فایل: {viewingProofSub.fileName || 'ویدیو مدرک ارسالی'}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleDownloadProofFile(
+                            viewingProofSub.content,
+                            viewingProofSub.fileName,
+                            'video'
+                          )
+                        }
+                        className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs transition"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        <span>دانلود مستقیم ویدیو</span>
+                      </button>
+                      <a
+                        href={viewingProofSub.content}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold border border-slate-700 transition"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        <span>نمایش در پنجره جدید</span>
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* LINK CATEGORY */}
+              {getProofCategory(viewingProofSub) === 'link' && (
+                <div className="w-full max-w-xl p-6 rounded-2xl bg-slate-900 border border-slate-800 space-y-4 text-center shadow-2xl">
+                  <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto">
+                    <LinkIcon className="w-6 h-6" />
+                  </div>
+                  <div className="space-y-1">
+                    <h4 className="text-sm font-bold text-white">پیوند ارسالی توسط کاربر</h4>
+                    <p className="text-xs text-slate-400 font-mono break-all p-3 rounded-xl bg-slate-950 border border-slate-800" dir="ltr">
+                      {viewingProofSub.content}
+                    </p>
+                  </div>
+                  <div className="flex items-center justify-center gap-3">
+                    <a
+                      href={viewingProofSub.content}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-lg transition"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                      <span>باز کردن لینک در تب جدید</span>
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => handleCopyText(viewingProofSub.content)}
+                      className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs border border-slate-700 transition"
+                    >
+                      {copiedLink ? <CheckCheck className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                      <span>{copiedLink ? 'کپی شد!' : 'کپی کردن آدرس'}</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* TEXT CATEGORY */}
+              {getProofCategory(viewingProofSub) === 'text' && (
+                <div className="w-full max-w-2xl p-6 rounded-2xl bg-slate-900 border border-slate-800 space-y-4 shadow-2xl">
+                  <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+                    <div className="flex items-center gap-2 text-xs font-bold text-slate-300">
+                      <FileText className="w-4 h-4 text-amber-400" />
+                      <span>توضیحات و متن ارسالی کاربر</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleCopyText(viewingProofSub.content)}
+                      className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-bold transition"
+                    >
+                      {copiedLink ? <CheckCheck className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span>{copiedLink ? 'کپی شد' : 'کپی متن'}</span>
+                    </button>
+                  </div>
+                  <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 text-slate-100 text-xs leading-relaxed whitespace-pre-wrap max-h-[50vh] overflow-auto">
+                    {viewingProofSub.content}
+                  </div>
+                </div>
+              )}
+
+              {/* NONE CATEGORY */}
+              {getProofCategory(viewingProofSub) === 'none' && (
+                <div className="text-center p-6 space-y-2 text-slate-400">
+                  <CheckCircle className="w-10 h-10 text-emerald-400 mx-auto" />
+                  <p className="text-sm font-bold text-slate-200">این تسک بدون مدرک ارسالی بوده است.</p>
+                  <p className="text-xs">تسک با کلیک کاربر انجام و ثبت گردیده است.</p>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Review Actions Footer */}
+            <div className="p-4 border-t border-slate-800 bg-slate-950/90 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
+              <div className="flex items-center gap-3 text-xs text-slate-400">
+                <span>زمان ارسال:</span>
+                <span className="font-mono text-slate-200">
+                  {new Date(viewingProofSub.submittedAt).toLocaleDateString('fa-IR')}{' '}
+                  {new Date(viewingProofSub.submittedAt).toLocaleTimeString('fa-IR', {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
+                </span>
+                <span className="w-px h-3 bg-slate-800" />
+                <span className="text-emerald-400 font-bold">
+                  جایزه: {(viewingProofSub.reward || 0).toLocaleString('fa-IR')} تومان
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                {viewingProofSub.status === 'pending' ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setReviewingSub(viewingProofSub);
+                        setAdminReviewNote('مدرک مورد تایید است.');
+                        handleReviewSubmission('approved');
+                      }}
+                      disabled={loading}
+                      className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs transition shadow-lg shadow-emerald-950/50 disabled:opacity-50"
+                    >
+                      <Check className="w-4 h-4" />
+                      <span>تأیید مدرک و واریز جایزه</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const targetSub = viewingProofSub;
+                        setViewingProofSub(null);
+                        setReviewingSub(targetSub);
+                        setAdminReviewNote('');
+                      }}
+                      disabled={loading}
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/40 font-bold text-xs transition disabled:opacity-50"
+                    >
+                      <X className="w-4 h-4" />
+                      <span>رد مدرک</span>
+                    </button>
+                  </>
+                ) : (
+                  <div className="text-xs text-slate-400">
+                    وضعیت فعلی:{' '}
+                    <span className="font-bold text-slate-200">
+                      {viewingProofSub.status === 'approved' ? 'تأیید شده' : 'رد شده'}
+                    </span>
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => setViewingProofSub(null)}
+                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs transition"
+                >
+                  بستن
+                </button>
+              </div>
             </div>
           </div>
         </div>

@@ -65,9 +65,9 @@ export const StepTaskModal: React.FC<StepTaskModalProps> = ({
     setError(null);
     setFileName(file.name);
 
-    // Max 10MB
-    if (file.size > 10 * 1024 * 1024) {
-      setError('حجم فایل انتخابی نباید بیشتر از ۱۰ مگابایت باشد.');
+    // Max 25MB
+    if (file.size > 25 * 1024 * 1024) {
+      setError('حجم فایل انتخابی نباید بیشتر از ۲۵ مگابایت باشد.');
       return;
     }
 
@@ -75,11 +75,7 @@ export const StepTaskModal: React.FC<StepTaskModalProps> = ({
     reader.onload = (event) => {
       const result = event.target?.result as string;
       setContent(result);
-      if (file.type.startsWith('image/')) {
-        setPreviewUrl(result);
-      } else {
-        setPreviewUrl(null);
-      }
+      setPreviewUrl(result);
     };
     reader.readAsDataURL(file);
   };
@@ -366,6 +362,7 @@ export const StepTaskModal: React.FC<StepTaskModalProps> = ({
                         type="button"
                         onClick={handleRemoveFile}
                         className="absolute top-4 left-4 p-2 rounded-xl bg-red-600/90 text-white hover:bg-red-500 transition shadow-lg"
+                        title="حذف و انتخاب مجدد"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -381,7 +378,7 @@ export const StepTaskModal: React.FC<StepTaskModalProps> = ({
                       <input
                         type="file"
                         ref={fileInputRef}
-                        accept="image/*"
+                        accept="image/*,.png,.jpg,.jpeg,.webp,.gif,.bmp,.svg,.heic"
                         onChange={handleFileChange}
                         className="hidden"
                       />
@@ -391,7 +388,7 @@ export const StepTaskModal: React.FC<StepTaskModalProps> = ({
                       <div className="text-xs font-bold text-slate-200">
                         برای انتخاب یا کشیدن تصویر کلیک کنید
                       </div>
-                      <p className="text-[11px] text-slate-500">فرمت‌های PNG، JPG، WEBP (حداکثر ۱۰ مگابایت)</p>
+                      <p className="text-[11px] text-slate-500">تمامی پسوندها: PNG، JPG، WEBP، GIF و... (حداکثر ۲۵ مگابایت)</p>
                     </div>
                   )}
                 </div>
@@ -404,38 +401,62 @@ export const StepTaskModal: React.FC<StepTaskModalProps> = ({
                     ارسال ویدیو یا پیوند ویدیو <span className="text-amber-400">*</span>
                   </label>
 
-                  <div>
-                    <input
-                      type="text"
-                      placeholder="لینک ویدیو در آپارات، یوتیوب، تلگرام یا درایو..."
-                      value={content.startsWith('data:') ? '' : content}
-                      onChange={(e) => {
-                        setContent(e.target.value);
-                        setFileName('');
-                      }}
-                      className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2.5 text-xs text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-amber-500 text-left font-mono"
-                      dir="ltr"
-                    />
-                  </div>
+                  {previewUrl ? (
+                    <div className="relative rounded-2xl overflow-hidden border border-purple-500/40 bg-slate-950 p-2 group">
+                      <video
+                        src={previewUrl}
+                        controls
+                        playsInline
+                        className="w-full max-h-56 rounded-xl bg-black object-contain"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleRemoveFile}
+                        className="absolute top-4 left-4 p-2 rounded-xl bg-red-600/90 text-white hover:bg-red-500 transition shadow-lg"
+                        title="حذف و انتخاب مجدد"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                      <div className="text-[11px] text-slate-400 text-center pt-2 font-mono truncate px-2">
+                        {fileName}
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div>
+                        <input
+                          type="text"
+                          placeholder="لینک ویدیو در آپارات، یوتیوب، تلگرام یا درایو..."
+                          value={content.startsWith('data:') ? '' : content}
+                          onChange={(e) => {
+                            setContent(e.target.value);
+                            setFileName('');
+                          }}
+                          className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2.5 text-xs text-slate-100 placeholder:text-slate-600 focus:outline-none focus:border-amber-500 text-left font-mono"
+                          dir="ltr"
+                        />
+                      </div>
 
-                  <div className="text-center text-slate-500 text-[11px]">- یا آپلود مستقیم فایل ویدیو -</div>
+                      <div className="text-center text-slate-500 text-[11px]">- یا آپلود مستقیم فایل ویدیو با هر پسوندی -</div>
 
-                  <div
-                    onClick={() => fileInputRef.current?.click()}
-                    className="border border-dashed border-slate-700 hover:border-amber-500/50 rounded-xl p-3 text-center cursor-pointer transition bg-slate-950/60 flex items-center justify-center gap-2"
-                  >
-                    <input
-                      type="file"
-                      ref={fileInputRef}
-                      accept="video/*"
-                      onChange={handleFileChange}
-                      className="hidden"
-                    />
-                    <VideoIcon className="w-4 h-4 text-amber-400" />
-                    <span className="text-xs text-slate-300">
-                      {fileName ? `فایل انتخاب شده: ${fileName}` : 'انتخاب فایل ویدیویی از دستگاه'}
-                    </span>
-                  </div>
+                      <div
+                        onClick={() => fileInputRef.current?.click()}
+                        className="border border-dashed border-slate-700 hover:border-amber-500/50 rounded-xl p-3 text-center cursor-pointer transition bg-slate-950/60 flex items-center justify-center gap-2"
+                      >
+                        <input
+                          type="file"
+                          ref={fileInputRef}
+                          accept="video/*,.mp4,.webm,.mov,.avi,.mkv,.m4v,.3gp"
+                          onChange={handleFileChange}
+                          className="hidden"
+                        />
+                        <VideoIcon className="w-4 h-4 text-amber-400" />
+                        <span className="text-xs text-slate-300">
+                          {fileName ? `فایل انتخاب شده: ${fileName}` : 'انتخاب ویدیو از دستگاه (MP4, WEBM, MOV, MKV...)'}
+                        </span>
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
 

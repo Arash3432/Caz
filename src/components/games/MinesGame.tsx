@@ -3,6 +3,7 @@ import { Bomb, Gem, Sparkles, AlertTriangle, ShieldCheck, CheckCircle2, ChevronR
 import confetti from 'canvas-confetti';
 import { User } from '../../types';
 import { sound } from '../../utils/audio';
+import { CasinoChipSelector } from './CasinoChipSelector';
 
 interface MinesGameProps {
   user: User | null;
@@ -87,7 +88,7 @@ export const MinesGame: React.FC<MinesGameProps> = ({ user, onUpdateUser, onRequ
         setIsPlaying(false);
         setMessage('متأسفانه به مین برخورد کردید!');
       } else {
-        sound.gem();
+        sound.gem(data.revealed.length);
         setRevealedTiles(data.revealed);
         setCurrentMultiplier(data.currentMultiplier);
         setNextMultiplier(data.nextMultiplier);
@@ -289,32 +290,16 @@ export const MinesGame: React.FC<MinesGameProps> = ({ user, onUpdateUser, onRequ
             <h4 className="text-sm font-bold text-slate-100">تنظیمات بازی مین‌ها</h4>
           </div>
 
-          {/* Bet Amount */}
-          <div className="space-y-1.5">
-            <label className="text-xs text-slate-300 font-semibold">مبلغ شرط (تومان):</label>
-            <input
-              type="number"
-              min={1000}
-              step={1000}
-              disabled={isPlaying}
-              value={betAmount}
-              onChange={(e) => setBetAmount(Math.max(1000, Number(e.target.value)))}
-              className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-slate-100 font-mono text-sm focus:outline-none focus:border-amber-500"
-            />
-            <div className="grid grid-cols-4 gap-1.5 pt-1">
-              {[1000, 5000, 20000, 50000].map((val) => (
-                <button
-                  key={val}
-                  type="button"
-                  disabled={isPlaying}
-                  onClick={() => { sound.chipClick(); setBetAmount(val); }}
-                  className="py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[11px] font-mono text-slate-300 transition text-center disabled:opacity-50"
-                >
-                  {(val / 1000).toLocaleString('fa-IR')}K
-                </button>
-              ))}
-            </div>
-          </div>
+          {/* Bet Amount with Casino Chips */}
+          <CasinoChipSelector
+            betAmount={betAmount}
+            onBetChange={setBetAmount}
+            disabled={isPlaying}
+            userBalance={user?.balance || 500000}
+            minBet={1000}
+            label="مبلغ شرط بازی مین‌ها"
+            accentColor="emerald"
+          />
 
           {/* Mines Count Selector */}
           <div className="space-y-1.5">
@@ -377,6 +362,28 @@ export const MinesGame: React.FC<MinesGameProps> = ({ user, onUpdateUser, onRequ
           </div>
         </div>
       </div>
+
+      {/* Sticky Mobile Cashout Bar */}
+      {isPlaying && revealedTiles.length > 0 && (
+        <div className="fixed bottom-[64px] left-3 right-3 z-40 sm:hidden animate-in slide-in-from-bottom-5 duration-200">
+          <button
+            onClick={handleCashout}
+            disabled={loading}
+            className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-500 hover:from-emerald-400 hover:to-teal-300 text-black font-black text-base shadow-[0_0_35px_rgba(16,185,129,0.7)] flex items-center justify-between border-2 border-white ring-4 ring-emerald-500/40 active:scale-95 animate-pulse"
+          >
+            <div className="flex items-center gap-2 text-right">
+              <Gem className="w-5 h-5 text-black animate-bounce" />
+              <div>
+                <div className="text-[11px] font-bold text-slate-950 leading-tight">برداشت امن سود مین</div>
+                <div className="text-xs font-mono font-black text-emerald-950">({currentMultiplier.toFixed(2)}x)</div>
+              </div>
+            </div>
+            <div className="font-mono text-base font-black text-slate-950" dir="ltr">
+              {Math.floor(betAmount * currentMultiplier).toLocaleString('fa-IR')} ت
+            </div>
+          </button>
+        </div>
+      )}
     </div>
   );
 };

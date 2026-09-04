@@ -1,7 +1,15 @@
 // Web Audio API Sound Synthesizer for Casino Sound FX
 class SoundFX {
   private ctx: AudioContext | null = null;
-  public enabled: boolean = true;
+  public enabled: boolean = typeof window !== 'undefined' ? localStorage.getItem('aria_sound') !== 'false' : true;
+
+  toggle(): boolean {
+    this.enabled = !this.enabled;
+    try {
+      localStorage.setItem('aria_sound', String(this.enabled));
+    } catch {}
+    return this.enabled;
+  }
 
   private getContext(): AudioContext | null {
     if (!this.enabled) return null;
@@ -15,6 +23,23 @@ class SoundFX {
       this.ctx.resume();
     }
     return this.ctx;
+  }
+
+  // Crisp UI Notification / Task completion ding
+  ding() {
+    const ctx = this.getContext();
+    if (!ctx) return;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(1760, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.18);
+    gain.gain.setValueAtTime(0.2, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.22);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.22);
   }
 
   // Play click / chip sound
@@ -130,25 +155,26 @@ class SoundFX {
     osc.stop(ctx.currentTime + 0.03);
   }
 
-  // Gem reveal sound in Mines
-  gem() {
+  // Gem reveal sound in Mines with ascending pitch per step
+  gem(step = 1) {
     const ctx = this.getContext();
     if (!ctx) return;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
 
+    const baseFreq = 800 + Math.min(1200, (step || 1) * 85);
     osc.type = 'sine';
-    osc.frequency.setValueAtTime(987.77, ctx.currentTime); // B5
-    osc.frequency.exponentialRampToValueAtTime(1318.51, ctx.currentTime + 0.15); // E6
+    osc.frequency.setValueAtTime(baseFreq, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(baseFreq * 1.35, ctx.currentTime + 0.16);
 
     gain.gain.setValueAtTime(0.25, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.22);
 
     osc.connect(gain);
     gain.connect(ctx.destination);
 
     osc.start();
-    osc.stop(ctx.currentTime + 0.2);
+    osc.stop(ctx.currentTime + 0.22);
   }
 
   // Roulette Ball Tick
@@ -240,6 +266,78 @@ class SoundFX {
       osc.start(ctx.currentTime + idx * 0.08);
       osc.stop(ctx.currentTime + idx * 0.08 + 0.2);
     });
+  }
+
+  // Cinematic rocket explosion shockwave sound
+  rocketExplode() {
+    const ctx = this.getContext();
+    if (!ctx) return;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(140, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(30, ctx.currentTime + 0.6);
+    gain.gain.setValueAtTime(0.4, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.65);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.65);
+  }
+
+  // Realistic dice rattle sound
+  diceRattle() {
+    const ctx = this.getContext();
+    if (!ctx) return;
+    [0, 0.04, 0.09, 0.15].forEach((t, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(320 + i * 80, ctx.currentTime + t);
+      osc.frequency.exponentialRampToValueAtTime(120, ctx.currentTime + t + 0.035);
+      gain.gain.setValueAtTime(0.25, ctx.currentTime + t);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + t + 0.035);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(ctx.currentTime + t);
+      osc.stop(ctx.currentTime + t + 0.04);
+    });
+  }
+
+  // Roulette wheel spin ball rolling sound
+  rouletteSpin() {
+    const ctx = this.getContext();
+    if (!ctx) return;
+    for (let i = 0; i < 8; i++) {
+      const t = i * 0.06;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(900 - i * 40, ctx.currentTime + t);
+      gain.gain.setValueAtTime(0.12, ctx.currentTime + t);
+      gain.gain.exponentialRampToValueAtTime(0.005, ctx.currentTime + t + 0.04);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(ctx.currentTime + t);
+      osc.stop(ctx.currentTime + t + 0.045);
+    }
+  }
+
+  // Slot machine mechanical reel lock stop sound
+  reelStop() {
+    const ctx = this.getContext();
+    if (!ctx) return;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(260, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(60, ctx.currentTime + 0.08);
+    gain.gain.setValueAtTime(0.25, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.09);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.09);
   }
 }
 

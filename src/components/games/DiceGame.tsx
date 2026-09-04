@@ -3,6 +3,7 @@ import { Dices, TrendingUp, Sparkles, CheckCircle2, AlertTriangle, ArrowUpDown, 
 import confetti from 'canvas-confetti';
 import { User } from '../../types';
 import { sound } from '../../utils/audio';
+import { CasinoChipSelector } from './CasinoChipSelector';
 
 interface DiceGameProps {
   user: User | null;
@@ -45,6 +46,7 @@ export const DiceGame: React.FC<DiceGameProps> = ({ user, onUpdateUser, onRequir
     setMessage(null);
     setLastResult(null);
     sound.chipClick();
+    sound.diceRattle();
 
     try {
       const res = await fetch('/api/games/dice/roll', {
@@ -261,53 +263,15 @@ export const DiceGame: React.FC<DiceGameProps> = ({ user, onUpdateUser, onRequir
 
         {/* Bet Amount & Roll Action */}
         <div className="space-y-3 sm:space-y-4">
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between text-xs text-slate-300 font-semibold">
-              <span>مبلغ شرط (تومان):</span>
-              <span className="text-amber-300 font-mono">{betAmount.toLocaleString('fa-IR')} تومان</span>
-            </div>
-            <input
-              type="number"
-              min={1000}
-              step={1000}
-              disabled={rolling}
-              value={betAmount}
-              onChange={(e) => setBetAmount(Math.max(1000, Number(e.target.value)))}
-              className="w-full px-3.5 py-2 sm:py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-slate-100 font-mono text-sm focus:outline-none focus:border-amber-500"
-            />
-            {/* Quick Chips & Multipliers */}
-            <div className="grid grid-cols-4 gap-1.5 pt-1">
-              {[1000, 5000, 20000, 50000].map((val) => (
-                <button
-                  key={val}
-                  type="button"
-                  disabled={rolling}
-                  onClick={() => { sound.chipClick(); setBetAmount(val); }}
-                  className="py-1 rounded-lg bg-slate-800 hover:bg-slate-700 active:scale-95 text-[11px] font-mono text-slate-300 transition text-center disabled:opacity-50"
-                >
-                  {(val / 1000).toLocaleString('fa-IR')}K
-                </button>
-              ))}
-            </div>
-            <div className="grid grid-cols-2 gap-1.5">
-              <button
-                type="button"
-                disabled={rolling}
-                onClick={() => setBetAmount((prev) => Math.max(1000, Math.floor(prev / 2)))}
-                className="py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 transition disabled:opacity-50"
-              >
-                ½ نصف
-              </button>
-              <button
-                type="button"
-                disabled={rolling}
-                onClick={() => setBetAmount((prev) => prev * 2)}
-                className="py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 transition disabled:opacity-50"
-              >
-                2X دوبرابر
-              </button>
-            </div>
-          </div>
+          <CasinoChipSelector
+            betAmount={betAmount}
+            onBetChange={setBetAmount}
+            disabled={rolling}
+            userBalance={user?.balance || 500000}
+            minBet={1000}
+            label="مبلغ ورودی پرتاب تاس"
+            accentColor="purple"
+          />
 
           <button
             onClick={handleRoll}

@@ -193,6 +193,7 @@ export const RouletteGame: React.FC<RouletteGameProps> = ({ user, onUpdateUser, 
     setMobileView('wheel');
     setMessage(null);
     setLastResult(null);
+    sound.rouletteSpin();
 
     try {
       const res = await fetch('/api/games/roulette/spin', {

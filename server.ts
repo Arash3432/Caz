@@ -30,8 +30,8 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  app.use(express.json({ limit: '15mb' }));
-  app.use(express.urlencoded({ extended: true, limit: '15mb' }));
+  app.use(express.json({ limit: '30mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '30mb' }));
 
   // Helper middleware for auth
   const authenticate = (req: express.Request, res: express.Response, next: express.NextFunction) => {
@@ -68,11 +68,93 @@ async function startServer() {
   };
 
   // ----------------------------------------------------
+  // SECURITY & PROTECTION MIDDLEWARES
+  // ----------------------------------------------------
+
+  // In-memory rate limiting map
+  const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
+
+  const createRateLimiter = (maxRequests: number, windowMs: number, actionName: string) => {
+    return (req: express.Request, res: express.Response, next: express.NextFunction) => {
+      const clientIp =
+        (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ||
+        req.ip ||
+        req.socket.remoteAddress ||
+        'unknown';
+      const key = `${actionName}:${clientIp}`;
+      const now = Date.now();
+      const record = rateLimitMap.get(key);
+
+      if (!record || now > record.resetTime) {
+        rateLimitMap.set(key, { count: 1, resetTime: now + windowMs });
+        return next();
+      }
+
+      record.count++;
+      if (record.count > maxRequests) {
+        const remainingSeconds = Math.ceil((record.resetTime - now) / 1000);
+        res.setHeader('Retry-After', remainingSeconds);
+        return res.status(429).json({
+          error: `تعداد درخواست‌های مکرر شما بیش از حد مجاز است. لطفاً ${remainingSeconds} ثانیه دیگر مجدداً تلاش کنید.`,
+          retryAfter: remainingSeconds,
+        });
+      }
+
+      next();
+    };
+  };
+
+  // Clean and sanitize text to prevent stored XSS or injection
+  const sanitizeText = (input: any, maxLength = 3000): string => {
+    if (typeof input !== 'string') return '';
+    return input
+      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+      .replace(/[<>]/g, '')
+      .trim()
+      .slice(0, maxLength);
+  };
+
+  // Safe bet amount validator (blocks negative, NaN, floating decimals, or amounts above balance)
+  const validateBet = (
+    amountRaw: any,
+    userBalance: number,
+    min = 1000,
+    max = 100_000_000
+  ): { valid: boolean; error?: string; amount: number } => {
+    const num = Number(amountRaw);
+    if (!Number.isFinite(num) || isNaN(num)) {
+      return { valid: false, error: 'مبلغ شرط نامعتبر است.', amount: 0 };
+    }
+    const amount = Math.floor(num);
+    if (amount < min) {
+      return {
+        valid: false,
+        error: `حداقل مبلغ شرط ${min.toLocaleString('fa-IR')} تومان می‌باشد.`,
+        amount: 0,
+      };
+    }
+    if (amount > max) {
+      return {
+        valid: false,
+        error: `حداکثر مبلغ شرط در هر راند ${max.toLocaleString('fa-IR')} تومان است.`,
+        amount: 0,
+      };
+    }
+    if (userBalance < amount) {
+      return { valid: false, error: 'موجودی حساب شما کافی نیست.', amount };
+    }
+    return { valid: true, amount };
+  };
+
+  const authRateLimiter = createRateLimiter(20, 60 * 1000, 'auth');
+  const faucetRateLimiter = createRateLimiter(6, 60 * 1000, 'faucet');
+
+  // ----------------------------------------------------
   // AUTH ROUTES
   // ----------------------------------------------------
 
   // Register - strictly ZERO balance upon registration as requested
-  app.post('/api/auth/register', (req, res) => {
+  app.post('/api/auth/register', authRateLimiter, (req, res) => {
     const { username, email, password } = req.body;
     if (!username || !password) {
       return res.status(400).json({ error: 'نام کاربری و رمز عبور الزامی است.' });
@@ -115,7 +197,7 @@ async function startServer() {
   });
 
   // Login
-  app.post('/api/auth/login', (req, res) => {
+  app.post('/api/auth/login', authRateLimiter, (req, res) => {
     const { username, password } = req.body;
     if (!username || !password) {
       return res.status(400).json({ error: 'نام کاربری و کلمه عبور الزامی است.' });
@@ -152,7 +234,7 @@ async function startServer() {
   });
 
   // Admin 2FA - Step 1
-  app.post('/api/auth/admin-login', (req, res) => {
+  app.post('/api/auth/admin-login', authRateLimiter, (req, res) => {
     const { username, password } = req.body;
     const db = getDb();
     const user = db.users.find(u => u.username.toLowerCase() === username?.trim().toLowerCase() && u.role === 'admin');
@@ -180,7 +262,7 @@ async function startServer() {
   });
 
   // Admin 2FA - Step 2 (Verification)
-  app.post('/api/auth/admin-verify-2fa', (req, res) => {
+  app.post('/api/auth/admin-verify-2fa', authRateLimiter, (req, res) => {
     const { adminId, code } = req.body;
     const db = getDb();
     const user = db.users.find(u => u.id === adminId && u.role === 'admin');
@@ -245,7 +327,7 @@ async function startServer() {
   });
 
   // Faucet / Free demo credit request (for testing without real payment gateway)
-  app.post('/api/user/claim-faucet', authenticate, (req, res) => {
+  app.post('/api/user/claim-faucet', authenticate, faucetRateLimiter, (req, res) => {
     const user = (req as any).user as User;
     const db = getDb();
     const dbUser = db.users.find(u => u.id === user.id);
@@ -278,7 +360,10 @@ async function startServer() {
       roundId: crashRound.id,
       state: crashRound.state,
       currentMultiplier: crashRound.currentMultiplier,
+      crashPoint: crashRound.state === 'crashed' ? crashRound.crashPoint : undefined,
       bettingCountdown: crashRound.bettingCountdown,
+      startTime: crashRound.startTime,
+      serverTime: Date.now(),
       betsCount: crashRound.bets.length,
       history: crashRound.history.slice(0, 15),
       activeBets: crashRound.bets.map(b => ({
@@ -294,17 +379,15 @@ async function startServer() {
   app.post('/api/games/crash/bet', authenticate, (req, res) => {
     const user = (req as any).user as User;
     const { betAmount } = req.body;
-    const amount = Number(betAmount);
-
-    if (!amount || amount < 1000) {
-      return res.status(400).json({ error: 'حداقل مبلغ شرط ۱,۰۰۰ تومان می‌باشد.' });
-    }
-
     const db = getDb();
     const dbUser = db.users.find(u => u.id === user.id);
-    if (!dbUser || dbUser.balance < amount) {
-      return res.status(400).json({ error: 'موجودی حساب کافی نیست. از دکمه شارژ تست یا پنل ادمین استفاده کنید.' });
+    if (!dbUser) return res.status(401).json({ error: 'کاربر یافت نشد.' });
+
+    const check = validateBet(betAmount, dbUser.balance, 1000);
+    if (!check.valid) {
+      return res.status(400).json({ error: check.error });
     }
+    const amount = check.amount;
 
     if (crashRound.state !== 'betting') {
       return res.status(400).json({ error: 'دوره شرط‌بندی بسته شده است. لطفاً منتظر راند بعدی باشید.' });
@@ -393,19 +476,25 @@ async function startServer() {
     }
 
     let totalBet = 0;
+    const sanitizedBets: Record<string, number> = {};
     for (const key of Object.keys(bets)) {
-      const val = Number(bets[key]);
-      if (val > 0) totalBet += val;
-    }
-
-    if (totalBet < 1000) {
-      return res.status(400).json({ error: 'حداقل مجموع شرط ۱,۰۰۰ تومان است.' });
+      const val = Math.floor(Number(bets[key]));
+      if (val < 0 || isNaN(val) || !Number.isFinite(val)) {
+        return res.status(400).json({ error: 'مبلغ شرط نامعتبر است.' });
+      }
+      if (val > 0) {
+        totalBet += val;
+        sanitizedBets[key] = val;
+      }
     }
 
     const db = getDb();
     const dbUser = db.users.find(u => u.id === user.id);
-    if (!dbUser || dbUser.balance < totalBet) {
-      return res.status(400).json({ error: 'موجودی حساب کافی نیست.' });
+    if (!dbUser) return res.status(401).json({ error: 'کاربر یافت نشد.' });
+
+    const check = validateBet(totalBet, dbUser.balance, 1000);
+    if (!check.valid) {
+      return res.status(400).json({ error: check.error });
     }
 
     dbUser.balance -= totalBet;
@@ -484,17 +573,15 @@ async function startServer() {
   app.post('/api/games/slots/spin', authenticate, (req, res) => {
     const user = (req as any).user as User;
     const { betAmount } = req.body;
-    const amount = Number(betAmount);
-
-    if (!amount || amount < 500) {
-      return res.status(400).json({ error: 'حداقل مبلغ شرط اسلات ۵۰۰ تومان است.' });
-    }
-
     const db = getDb();
     const dbUser = db.users.find(u => u.id === user.id);
-    if (!dbUser || dbUser.balance < amount) {
-      return res.status(400).json({ error: 'موجودی حساب کافی نیست.' });
+    if (!dbUser) return res.status(401).json({ error: 'کاربر یافت نشد.' });
+
+    const check = validateBet(betAmount, dbUser.balance, 500);
+    if (!check.valid) {
+      return res.status(400).json({ error: check.error });
     }
+    const amount = check.amount;
 
     dbUser.balance -= amount;
 
@@ -623,18 +710,17 @@ async function startServer() {
   app.post('/api/games/mines/start', authenticate, (req, res) => {
     const user = (req as any).user as User;
     const { betAmount, minesCount } = req.body;
-    const amount = Number(betAmount);
-    const mines = Math.max(1, Math.min(24, Number(minesCount) || 3));
-
-    if (!amount || amount < 1000) {
-      return res.status(400).json({ error: 'حداقل شرط ۱,۰۰۰ تومان است.' });
-    }
+    const mines = Math.max(1, Math.min(24, Math.floor(Number(minesCount)) || 3));
 
     const db = getDb();
     const dbUser = db.users.find(u => u.id === user.id);
-    if (!dbUser || dbUser.balance < amount) {
-      return res.status(400).json({ error: 'موجودی حساب کافی نیست.' });
+    if (!dbUser) return res.status(401).json({ error: 'کاربر یافت نشد.' });
+
+    const check = validateBet(betAmount, dbUser.balance, 1000);
+    if (!check.valid) {
+      return res.status(400).json({ error: check.error });
     }
+    const amount = check.amount;
 
     // Place mines
     const grid: boolean[] = new Array(25).fill(false);
@@ -809,21 +895,21 @@ async function startServer() {
   app.post('/api/games/dice/roll', authenticate, (req, res) => {
     const user = (req as any).user as User;
     const { betAmount, target, condition } = req.body;
-    const amount = Number(betAmount);
     const targetVal = Number(target);
 
-    if (!amount || amount < 1000) {
-      return res.status(400).json({ error: 'حداقل مبلغ شرط ۱,۰۰۰ تومان است.' });
-    }
     if (isNaN(targetVal) || targetVal < 2 || targetVal > 98) {
       return res.status(400).json({ error: 'هدف طاس باید بین ۲ تا ۹۸ باشد.' });
     }
 
     const db = getDb();
     const dbUser = db.users.find(u => u.id === user.id);
-    if (!dbUser || dbUser.balance < amount) {
-      return res.status(400).json({ error: 'موجودی حساب کافی نیست.' });
+    if (!dbUser) return res.status(401).json({ error: 'کاربر یافت نشد.' });
+
+    const check = validateBet(betAmount, dbUser.balance, 1000);
+    if (!check.valid) {
+      return res.status(400).json({ error: check.error });
     }
+    const amount = check.amount;
 
     dbUser.balance -= amount;
 
@@ -881,17 +967,16 @@ async function startServer() {
   app.post('/api/games/plinko/drop', authenticate, (req, res) => {
     const user = (req as any).user as User;
     const { betAmount } = req.body;
-    const amount = Number(betAmount);
-
-    if (!amount || amount < 1000) {
-      return res.status(400).json({ error: 'حداقل مبلغ شرط ۱,۰۰۰ تومان است.' });
-    }
 
     const db = getDb();
     const dbUser = db.users.find(u => u.id === user.id);
-    if (!dbUser || dbUser.balance < amount) {
-      return res.status(400).json({ error: 'موجودی حساب کافی نیست.' });
+    if (!dbUser) return res.status(401).json({ error: 'کاربر یافت نشد.' });
+
+    const check = validateBet(betAmount, dbUser.balance, 1000);
+    if (!check.valid) {
+      return res.status(400).json({ error: check.error });
     }
+    const amount = check.amount;
 
     dbUser.balance -= amount;
 
@@ -947,20 +1032,20 @@ async function startServer() {
   app.post('/api/games/coinflip/flip', authenticate, (req, res) => {
     const user = (req as any).user as User;
     const { betAmount, choice } = req.body; // choice: 'heads' | 'tails'
-    const amount = Number(betAmount);
 
-    if (!amount || amount < 1000) {
-      return res.status(400).json({ error: 'حداقل مبلغ شرط ۱,۰۰۰ تومان است.' });
-    }
     if (choice !== 'heads' && choice !== 'tails') {
       return res.status(400).json({ error: 'انتخاب باید شیر یا خط باشد.' });
     }
 
     const db = getDb();
     const dbUser = db.users.find(u => u.id === user.id);
-    if (!dbUser || dbUser.balance < amount) {
-      return res.status(400).json({ error: 'موجودی حساب کافی نیست.' });
+    if (!dbUser) return res.status(401).json({ error: 'کاربر یافت نشد.' });
+
+    const check = validateBet(betAmount, dbUser.balance, 1000);
+    if (!check.valid) {
+      return res.status(400).json({ error: check.error });
     }
+    const amount = check.amount;
 
     dbUser.balance -= amount;
 
@@ -1008,6 +1093,56 @@ async function startServer() {
       netProfit: payout - amount,
       balance: dbUser.balance,
     });
+  });
+
+  // ----------------------------------------------------
+  // PUBLIC LIVE BETS FEED & BIG WINS
+  // ----------------------------------------------------
+  app.get('/api/bets/live-feed', (req, res) => {
+    const db = getDb();
+    const mask = (name: string) => {
+      if (!name) return 'کاربر***';
+      if (name.length <= 3) return name + '***';
+      return name.slice(0, 2) + '***' + name.slice(-1);
+    };
+
+    const recent = (db.bets || []).slice(0, 25).map(b => ({
+      id: b.id,
+      username: mask(b.username),
+      game: b.game,
+      betAmount: b.betAmount,
+      multiplier: b.multiplier,
+      payout: b.payout,
+      won: b.won,
+      timestamp: b.timestamp,
+    }));
+
+    const topWins = [...(db.bets || [])]
+      .filter(b => b.won && b.payout >= 10000)
+      .sort((a, b) => b.payout - a.payout)
+      .slice(0, 10)
+      .map(b => ({
+        id: b.id,
+        username: mask(b.username),
+        game: b.game,
+        betAmount: b.betAmount,
+        multiplier: b.multiplier,
+        payout: b.payout,
+        timestamp: b.timestamp,
+      }));
+
+    res.json({
+      recent,
+      topWins,
+    });
+  });
+
+  // User's own bet history
+  app.get('/api/user/my-bets', authenticate, (req, res) => {
+    const user = (req as any).user as User;
+    const db = getDb();
+    const myBets = (db.bets || []).filter(b => b.userId === user.id).slice(0, 40);
+    res.json({ bets: myBets });
   });
 
   // ----------------------------------------------------
@@ -1396,6 +1531,10 @@ async function startServer() {
     }
 
     if (task.requiresAdminApproval) {
+      const cleanFileName = sanitizeText(fileName, 120);
+      const isDataUri = typeof content === 'string' && content.startsWith('data:');
+      const cleanContent = isDataUri ? content : sanitizeText(content, 10000);
+
       const newSub: TaskSubmission = {
         id: `sub-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
         taskId: task.id,
@@ -1405,8 +1544,8 @@ async function startServer() {
         stepNumber: task.stepNumber,
         reward: task.reward,
         submissionType: task.submissionType,
-        content: content?.trim() || '',
-        fileName: fileName || '',
+        content: cleanContent,
+        fileName: cleanFileName,
         status: 'pending',
         submittedAt: new Date().toISOString(),
       };

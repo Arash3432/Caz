@@ -3,6 +3,7 @@ import { Sparkles, Crown, Award, Zap, AlertTriangle, ChevronRight, HelpCircle } 
 import confetti from 'canvas-confetti';
 import { User } from '../../types';
 import { sound } from '../../utils/audio';
+import { CasinoChipSelector } from './CasinoChipSelector';
 
 interface SlotsGameProps {
   user: User | null;
@@ -67,9 +68,10 @@ export const SlotsGame: React.FC<SlotsGameProps> = ({ user, onUpdateUser, onRequ
         sound.reelTick();
       }, 100);
 
-      // Spin animation duration: 1.5s
+      // Spin animation duration: 1.4s
       setTimeout(() => {
         clearInterval(tickTimer);
+        sound.reelStop();
         setSpinning(false);
         setReels(data.grid);
         onUpdateUser({ ...user, balance: data.balance });
@@ -245,50 +247,35 @@ export const SlotsGame: React.FC<SlotsGameProps> = ({ user, onUpdateUser, onRequ
         )}
 
         {/* Controls Bar */}
-        <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 items-center pt-2">
-          {/* Bet controls */}
-          <div className="sm:col-span-7 space-y-2">
-            <div className="flex items-center justify-between text-xs text-slate-300">
-              <span>مبلغ شرط هر اسپین:</span>
-              <span className="text-amber-300 font-mono font-bold">
-                {betAmount.toLocaleString('fa-IR')} تومان
-              </span>
-            </div>
-            <div className="grid grid-cols-4 gap-2">
-              {[1000, 5000, 20000, 50000].map((val) => (
-                <button
-                  key={val}
-                  type="button"
-                  onClick={() => { sound.chipClick(); setBetAmount(val); }}
-                  className={`py-2 rounded-xl text-xs font-mono font-bold transition border ${
-                    betAmount === val
-                      ? 'bg-amber-500 text-black border-amber-400 shadow-md shadow-amber-500/30'
-                      : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border-slate-700'
-                  }`}
-                >
-                  {(val / 1000).toLocaleString('fa-IR')}K
-                </button>
-              ))}
-            </div>
-          </div>
+        <div className="space-y-4 pt-2">
+          {/* Bet controls with 3D Casino Chips */}
+          <CasinoChipSelector
+            betAmount={betAmount}
+            onBetChange={setBetAmount}
+            disabled={spinning}
+            userBalance={user?.balance || 500000}
+            minBet={1000}
+            label="مبلغ ورودی هر اسپین"
+            accentColor="amber"
+          />
 
           {/* Spin Lever Button */}
-          <div className="sm:col-span-5">
+          <div>
             <button
               onClick={handleSpin}
               disabled={spinning}
-              className={`w-full py-4 rounded-2xl font-black text-base transition shadow-2xl flex items-center justify-center gap-2 ${
+              className={`w-full py-4 rounded-2xl font-black text-base sm:text-lg transition shadow-2xl flex items-center justify-center gap-2 border-2 border-amber-300/40 ${
                 spinning
-                  ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
-                  : 'bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 hover:from-amber-400 hover:to-yellow-300 text-black shadow-amber-500/40 active:scale-98'
+                  ? 'bg-slate-800 text-slate-500 cursor-not-allowed opacity-75'
+                  : 'bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 hover:from-amber-400 hover:to-yellow-300 text-black shadow-amber-500/50 active:scale-98 animate-pulse'
               }`}
             >
               {spinning ? (
-                'در حال چرخش اسلات...'
+                'در حال چرخش ریل‌ها...'
               ) : (
                 <>
                   <Zap className="w-5 h-5 fill-black" />
-                  <span>چرخش (SPIN)</span>
+                  <span>شروع چرخش ریل‌ها (SPIN)</span>
                 </>
               )}
             </button>

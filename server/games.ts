@@ -127,7 +127,7 @@ setInterval(() => {
       }, 4000);
     }
   }
-}, 100);
+}, 35);
 
 // Helper for Roulette
 export const ROULETTE_NUMBERS = [

@@ -3,6 +3,7 @@ import { Sparkles, ChevronRight, HelpCircle, ArrowDown, Award, RefreshCw } from 
 import confetti from 'canvas-confetti';
 import { User } from '../../types';
 import { sound } from '../../utils/audio';
+import { CasinoChipSelector } from './CasinoChipSelector';
 
 interface PlinkoGameProps {
   user: User | null;
@@ -48,7 +49,8 @@ export const PlinkoGame: React.FC<PlinkoGameProps> = ({ user, onUpdateUser, onRe
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const ballsRef = useRef<Ball[]>([]);
-  const pegHitsRef = useRef<{ x: number; y: number; alpha: number }[]>([]);
+  const pegHitsRef = useRef<{ x: number; y: number; alpha: number; color: string }[]>([]);
+  const sparksRef = useRef<{ x: number; y: number; vx: number; vy: number; life: number; color: string }[]>([]);
 
   const rows = 10;
 
@@ -94,16 +96,40 @@ export const PlinkoGame: React.FC<PlinkoGameProps> = ({ user, onUpdateUser, onRe
         }
       }
 
-      // Draw Peg Hit Rings
+      // Draw Peg Hit Shock Rings
       for (let i = pegHitsRef.current.length - 1; i >= 0; i--) {
         const hit = pegHitsRef.current[i];
         ctx.beginPath();
-        ctx.arc(hit.x, hit.y, (1 - hit.alpha) * 16 + 4, 0, Math.PI * 2);
-        ctx.strokeStyle = `rgba(245, 158, 11, ${hit.alpha})`;
-        ctx.lineWidth = 2;
+        ctx.arc(hit.x, hit.y, (1 - hit.alpha) * 18 + 4, 0, Math.PI * 2);
+        ctx.strokeStyle = hit.color || `rgba(244, 114, 182, ${hit.alpha})`;
+        ctx.lineWidth = 2.5;
+        ctx.shadowColor = hit.color || '#f472b6';
+        ctx.shadowBlur = 8;
         ctx.stroke();
-        hit.alpha -= 0.05;
+        ctx.shadowBlur = 0;
+        hit.alpha -= 0.055;
         if (hit.alpha <= 0) pegHitsRef.current.splice(i, 1);
+      }
+
+      // Draw and Update Sparks
+      for (let i = sparksRef.current.length - 1; i >= 0; i--) {
+        const sp = sparksRef.current[i];
+        sp.x += sp.vx;
+        sp.y += sp.vy;
+        sp.life -= 0.05;
+        if (sp.life <= 0) {
+          sparksRef.current.splice(i, 1);
+          continue;
+        }
+        ctx.beginPath();
+        ctx.arc(sp.x, sp.y, Math.max(1, sp.life * 3.5), 0, Math.PI * 2);
+        ctx.fillStyle = sp.color;
+        ctx.globalAlpha = Math.max(0, sp.life);
+        ctx.shadowColor = sp.color;
+        ctx.shadowBlur = 6;
+        ctx.fill();
+        ctx.shadowBlur = 0;
+        ctx.globalAlpha = 1.0;
       }
 
       // Update and Draw Balls
@@ -133,8 +159,21 @@ export const PlinkoGame: React.FC<PlinkoGameProps> = ({ user, onUpdateUser, onRe
             ball.y = targetRowY;
             ball.step++;
 
-            // Hit peg effect and audio
-            pegHitsRef.current.push({ x: targetX, y: targetRowY, alpha: 1 });
+            // Hit peg effect, spark burst and audio
+            const ringColor = ball.color === '#fbbf24' ? 'rgba(251, 191, 36, 0.9)' : 'rgba(244, 114, 182, 0.9)';
+            pegHitsRef.current.push({ x: targetX, y: targetRowY, alpha: 1, color: ringColor });
+            for (let k = 0; k < 6; k++) {
+              const ang = Math.random() * Math.PI * 2;
+              const spd = Math.random() * 3.5 + 1;
+              sparksRef.current.push({
+                x: targetX,
+                y: targetRowY,
+                vx: Math.cos(ang) * spd,
+                vy: Math.sin(ang) * spd - 1,
+                life: 1.0,
+                color: ball.color,
+              });
+            }
             sound.pegBounce(1 + ball.step * 0.08);
 
             if (ball.step > rows) {
@@ -148,12 +187,16 @@ export const PlinkoGame: React.FC<PlinkoGameProps> = ({ user, onUpdateUser, onRe
           }
         }
 
-        // Draw Ball
+        // Draw Ball with Glowing Tail
         ctx.beginPath();
-        ctx.arc(ball.x, ball.y, 7, 0, Math.PI * 2);
-        ctx.fillStyle = ball.color;
+        ctx.arc(ball.x, ball.y, 8, 0, Math.PI * 2);
+        const ballGrad = ctx.createRadialGradient(ball.x - 2, ball.y - 2, 1, ball.x, ball.y, 8);
+        ballGrad.addColorStop(0, '#ffffff');
+        ballGrad.addColorStop(0.5, ball.color);
+        ballGrad.addColorStop(1, '#0f172a');
+        ctx.fillStyle = ballGrad;
         ctx.shadowColor = ball.color;
-        ctx.shadowBlur = 12;
+        ctx.shadowBlur = 16;
         ctx.fill();
         ctx.shadowBlur = 0;
       });
@@ -342,39 +385,15 @@ export const PlinkoGame: React.FC<PlinkoGameProps> = ({ user, onUpdateUser, onRe
 
         {/* Controls Card */}
         <div className="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-3">
-          <div className="flex items-center justify-between">
-            <label className="text-xs text-slate-300 font-semibold">مبلغ شرط (تومان):</label>
-            <div className="text-xs text-pink-400 font-mono font-bold">
-              {betAmount.toLocaleString('fa-IR')} ت
-            </div>
-          </div>
-
-          <input
-            type="number"
-            min={1000}
-            step={1000}
+          <CasinoChipSelector
+            betAmount={betAmount}
+            onBetChange={setBetAmount}
             disabled={dropping}
-            value={betAmount}
-            onChange={(e) => setBetAmount(Math.max(1000, Number(e.target.value)))}
-            className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-slate-100 font-mono text-sm focus:outline-none focus:border-pink-500"
+            userBalance={user?.balance || 500000}
+            minBet={1000}
+            label="مبلغ ورودی توپ پلینکو"
+            accentColor="pink"
           />
-
-          <div className="grid grid-cols-4 gap-1.5">
-            {[1000, 5000, 20000, 50000].map((val) => (
-              <button
-                key={val}
-                type="button"
-                disabled={dropping}
-                onClick={() => {
-                  sound.chipClick();
-                  setBetAmount(val);
-                }}
-                className="py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-mono text-slate-300 transition"
-              >
-                {(val / 1000).toLocaleString('fa-IR')}K
-              </button>
-            ))}
-          </div>
 
           {message && (
             <div className="p-2.5 rounded-xl bg-rose-950/60 border border-rose-500/40 text-rose-300 text-xs">

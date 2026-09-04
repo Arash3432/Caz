@@ -15,6 +15,7 @@ import {
 import confetti from 'canvas-confetti';
 import { User } from '../../types';
 import { sound } from '../../utils/audio';
+import { CasinoChipSelector } from './CasinoChipSelector';
 
 interface CrashGameProps {
   user: User | null;
@@ -63,6 +64,37 @@ export const CrashGame: React.FC<CrashGameProps> = ({ user, onUpdateUser, onRequ
   const cashingOutRef = useRef<boolean>(false);
   const shakeRef = useRef<number>(0);
   const previousStateRef = useRef<'betting' | 'flying' | 'crashed'>('betting');
+  const targetMultiplierRef = useRef<number>(1.00);
+  const displayMultiplierRef = useRef<number>(1.00);
+  const stateRef = useRef<'betting' | 'flying' | 'crashed'>('betting');
+
+  // Ultra-Smooth, Micro-Stepping Multiplier Ticker (شمرده شمرده و بدون پرش‌های ناگهانی 0.30)
+  useEffect(() => {
+    let animId: number;
+
+    const smoothStep = () => {
+      const currentState = stateRef.current;
+      if (currentState === 'flying') {
+        const target = targetMultiplierRef.current;
+        const current = displayMultiplierRef.current;
+
+        if (target > current) {
+          const diff = target - current;
+          // Step calculated smoothly: counts up step-by-step with high precision (0.01-0.04 micro-increments)
+          // preventing large sudden 0.30 jumps while preserving the speed and tiered acceleration
+          const frameIncrement = Math.max(0.01, Math.min(0.04, diff * 0.22));
+          const step = Math.min(diff, frameIncrement);
+          const next = Number((current + step).toFixed(2));
+          displayMultiplierRef.current = next;
+          setCurrentMultiplier(next);
+        }
+      }
+      animId = requestAnimationFrame(smoothStep);
+    };
+
+    animId = requestAnimationFrame(smoothStep);
+    return () => cancelAnimationFrame(animId);
+  }, []);
 
   // Initialize background starfield
   useEffect(() => {
@@ -103,23 +135,51 @@ export const CrashGame: React.FC<CrashGameProps> = ({ user, onUpdateUser, onRequ
           if (previousStateRef.current !== data.state) {
             if (data.state === 'flying') {
               sound.whoosh();
+              displayMultiplierRef.current = 1.00;
+              setCurrentMultiplier(1.00);
             } else if (data.state === 'crashed') {
+              sound.rocketExplode();
               sound.explosion();
-              shakeRef.current = 15; // Trigger dramatic screen shake
+              shakeRef.current = 28; // Trigger dramatic cinematic screen shake
             }
             previousStateRef.current = data.state;
           }
 
+          stateRef.current = data.state;
           setState(data.state);
-          setCurrentMultiplier(data.currentMultiplier);
+
+          if (data.state === 'flying') {
+            targetMultiplierRef.current = data.currentMultiplier;
+            if (displayMultiplierRef.current < 1.00) {
+              displayMultiplierRef.current = 1.00;
+            }
+            const diff = targetMultiplierRef.current - displayMultiplierRef.current;
+            if (diff > 0) {
+              displayMultiplierRef.current = Number((displayMultiplierRef.current + Math.min(diff, Math.max(0.02, diff * 0.45))).toFixed(2));
+            } else {
+              displayMultiplierRef.current = targetMultiplierRef.current;
+            }
+            setCurrentMultiplier(displayMultiplierRef.current);
+          } else if (data.state === 'crashed') {
+            targetMultiplierRef.current = data.currentMultiplier;
+            displayMultiplierRef.current = data.currentMultiplier;
+            setCurrentMultiplier(data.currentMultiplier);
+          } else {
+            // betting
+            targetMultiplierRef.current = 1.00;
+            displayMultiplierRef.current = 1.00;
+            setCurrentMultiplier(1.00);
+          }
+
           setBettingCountdown(data.bettingCountdown);
           if (data.history) setHistory(data.history);
           if (data.activeBets) setActiveBets(data.activeBets);
 
           // Auto-cashout trigger
+          const effectiveMultiplier = Math.max(displayMultiplierRef.current, data.currentMultiplier);
           if (hasBet && !cashedOut && !cashingOutRef.current && data.state === 'flying') {
             const target = parseFloat(autoCashout);
-            if (!isNaN(target) && target > 1.0 && data.currentMultiplier >= target) {
+            if (!isNaN(target) && target > 1.0 && effectiveMultiplier >= target) {
               cashingOutRef.current = true;
               handleCashout();
             }
@@ -129,7 +189,7 @@ export const CrashGame: React.FC<CrashGameProps> = ({ user, onUpdateUser, onRequ
         // network pause
       } finally {
         if (isMounted) {
-          timeoutId = setTimeout(poll, 160);
+          timeoutId = setTimeout(poll, 90);
         }
       }
     };
@@ -316,34 +376,138 @@ export const CrashGame: React.FC<CrashGameProps> = ({ user, onUpdateUser, onRequ
         ctx.globalAlpha = 1.0;
       }
 
-      // Draw Rocket or Explosion
+      // Draw Sci-Fi Starship or Cinematic Shockwave Explosion
       if (state === 'flying') {
         ctx.save();
         ctx.translate(curX, curY);
-        ctx.rotate(-0.42);
+        ctx.rotate(-0.45);
 
-        // Thruster fire glow
-        const glow = ctx.createRadialGradient(-10, 8, 2, -15, 12, 20);
-        glow.addColorStop(0, 'rgba(251, 191, 36, 0.9)');
-        glow.addColorStop(0.5, 'rgba(239, 68, 68, 0.5)');
-        glow.addColorStop(1, 'rgba(0, 0, 0, 0)');
-        ctx.fillStyle = glow;
+        // Dynamic Thruster Plasma Exhaust
+        const flameLen = 22 + Math.min(35, currentMultiplier * 3);
+        const flameW = 8 + Math.sin(Date.now() * 0.035) * 2.5;
+
+        // Outer Flame Plume
+        const flameGrad = ctx.createLinearGradient(0, 0, -flameLen, 0);
+        flameGrad.addColorStop(
+          0,
+          currentMultiplier >= 10.0
+            ? 'rgba(232, 121, 249, 0.95)'
+            : currentMultiplier >= 3.0
+            ? 'rgba(52, 211, 153, 0.95)'
+            : 'rgba(245, 158, 11, 0.95)'
+        );
+        flameGrad.addColorStop(0.5, 'rgba(239, 68, 68, 0.6)');
+        flameGrad.addColorStop(1, 'rgba(239, 68, 68, 0)');
+        ctx.fillStyle = flameGrad;
         ctx.beginPath();
-        ctx.arc(-10, 8, 20, 0, Math.PI * 2);
+        ctx.moveTo(-10, -flameW);
+        ctx.quadraticCurveTo(-10 - flameLen * 0.55, 0, -10 - flameLen, 0);
+        ctx.quadraticCurveTo(-10 - flameLen * 0.55, 0, -10, flameW);
+        ctx.closePath();
         ctx.fill();
 
-        ctx.font = '28px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('🚀', 0, 0);
+        // Inner Super-Hot Core
+        const coreGrad = ctx.createLinearGradient(0, 0, -flameLen * 0.5, 0);
+        coreGrad.addColorStop(0, '#ffffff');
+        coreGrad.addColorStop(1, 'rgba(56, 189, 248, 0)');
+        ctx.fillStyle = coreGrad;
+        ctx.beginPath();
+        ctx.moveTo(-10, -flameW * 0.45);
+        ctx.quadraticCurveTo(-10 - flameLen * 0.3, 0, -10 - flameLen * 0.5, 0);
+        ctx.quadraticCurveTo(-10 - flameLen * 0.3, 0, -10, flameW * 0.45);
+        ctx.closePath();
+        ctx.fill();
+
+        // Starship Delta-Wing Hull
+        ctx.beginPath();
+        ctx.moveTo(22, 0); // Sharp nose
+        ctx.lineTo(-9, -15); // Left wingtip
+        ctx.lineTo(-5, -6); // Left inner notch
+        ctx.lineTo(-11, -7); // Left thruster
+        ctx.lineTo(-11, 7); // Right thruster
+        ctx.lineTo(-5, 6); // Right inner notch
+        ctx.lineTo(-9, 15); // Right wingtip
+        ctx.closePath();
+
+        const hullGrad = ctx.createLinearGradient(-10, -15, 22, 15);
+        hullGrad.addColorStop(0, '#0f172a');
+        hullGrad.addColorStop(0.4, '#1e293b');
+        hullGrad.addColorStop(0.75, '#475569');
+        hullGrad.addColorStop(1, '#f8fafc');
+        ctx.fillStyle = hullGrad;
+        ctx.fill();
+
+        // Neon Edge Glow
+        ctx.strokeStyle =
+          currentMultiplier >= 10.0 ? '#c084fc' : currentMultiplier >= 3.0 ? '#34d399' : '#f59e0b';
+        ctx.lineWidth = 1.8;
+        ctx.shadowColor = ctx.strokeStyle;
+        ctx.shadowBlur = 12;
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+
+        // Cockpit Glass Canopy
+        ctx.beginPath();
+        ctx.ellipse(3, 0, 7, 3.5, 0, 0, Math.PI * 2);
+        const canopyGrad = ctx.createRadialGradient(4, -1, 1, 3, 0, 8);
+        canopyGrad.addColorStop(0, '#67e8f9');
+        canopyGrad.addColorStop(0.6, '#0284c7');
+        canopyGrad.addColorStop(1, '#0369a1');
+        ctx.fillStyle = canopyGrad;
+        ctx.fill();
+        ctx.strokeStyle = '#e0f2fe';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        // Navigation Strobes
+        ctx.fillStyle = '#ef4444';
+        ctx.beginPath();
+        ctx.arc(-8, -14, 2, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#10b981';
+        ctx.beginPath();
+        ctx.arc(-8, 14, 2, 0, Math.PI * 2);
+        ctx.fill();
+
         ctx.restore();
       } else if (state === 'crashed') {
         ctx.save();
         ctx.translate(curX, curY);
-        ctx.font = '36px sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('💥', 0, 0);
+
+        // Expanding Shockwave Ring
+        ctx.beginPath();
+        ctx.arc(0, 0, 36, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(239, 68, 68, 0.75)';
+        ctx.lineWidth = 3;
+        ctx.shadowColor = '#ef4444';
+        ctx.shadowBlur = 18;
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+
+        // Blast Core Fiery Burst
+        const blastGrad = ctx.createRadialGradient(0, 0, 2, 0, 0, 28);
+        blastGrad.addColorStop(0, '#ffffff');
+        blastGrad.addColorStop(0.3, '#fef08a');
+        blastGrad.addColorStop(0.6, '#f97316');
+        blastGrad.addColorStop(0.9, '#ef4444');
+        blastGrad.addColorStop(1, 'rgba(239, 68, 68, 0)');
+        ctx.fillStyle = blastGrad;
+        ctx.beginPath();
+        ctx.arc(0, 0, 28, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Starburst Spikes
+        ctx.strokeStyle = '#fef08a';
+        ctx.lineWidth = 2;
+        for (let a = 0; a < 8; a++) {
+          const ang = (a * Math.PI) / 4;
+          ctx.beginPath();
+          ctx.moveTo(Math.cos(ang) * 10, Math.sin(ang) * 10);
+          ctx.lineTo(Math.cos(ang) * 32, Math.sin(ang) * 32);
+          ctx.stroke();
+        }
+
         ctx.restore();
       }
 
@@ -566,57 +730,16 @@ export const CrashGame: React.FC<CrashGameProps> = ({ user, onUpdateUser, onRequ
               </span>
             </div>
 
-            {/* Bet Amount Input */}
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <label className="text-xs text-slate-300 font-semibold">مبلغ شرط (تومان):</label>
-                <div className="text-[11px] text-amber-300 font-mono font-bold">
-                  {betAmount.toLocaleString('fa-IR')} ت
-                </div>
-              </div>
-              <input
-                type="number"
-                min={1000}
-                step={1000}
-                value={betAmount}
-                disabled={hasBet && state !== 'betting'}
-                onChange={(e) => setBetAmount(Math.max(1000, Number(e.target.value)))}
-                className="w-full px-3.5 py-2 sm:py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-slate-100 font-mono text-sm focus:outline-none focus:border-amber-500"
-              />
-
-              {/* Quick Chip Multipliers */}
-              <div className="grid grid-cols-4 gap-1 pt-1">
-                {[5000, 20000, 50000, 100000].map((val) => (
-                  <button
-                    key={val}
-                    type="button"
-                    onClick={() => {
-                      sound.chipClick();
-                      setBetAmount(val);
-                    }}
-                    className="py-1.5 px-1 rounded-lg bg-slate-800 hover:bg-slate-700 active:scale-95 text-[11px] font-mono text-slate-300 transition text-center"
-                  >
-                    {(val / 1000).toLocaleString('fa-IR')}K
-                  </button>
-                ))}
-              </div>
-              <div className="grid grid-cols-2 gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => setBetAmount((prev) => Math.max(1000, Math.floor(prev / 2)))}
-                  className="py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 transition"
-                >
-                  ½ نصف
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setBetAmount((prev) => prev * 2)}
-                  className="py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 transition"
-                >
-                  2X دوبرابر
-                </button>
-              </div>
-            </div>
+            {/* Casino Chip Selector Component */}
+            <CasinoChipSelector
+              betAmount={betAmount}
+              onBetChange={setBetAmount}
+              disabled={hasBet && state !== 'betting'}
+              userBalance={user?.balance || 500000}
+              minBet={1000}
+              label="مبلغ ورودی به راند پرواز"
+              accentColor="amber"
+            />
 
             {/* Auto Cashout */}
             <div className="space-y-1">
@@ -729,6 +852,28 @@ export const CrashGame: React.FC<CrashGameProps> = ({ user, onUpdateUser, onRequ
           )}
         </div>
       </details>
+
+      {/* Sticky Mobile Cashout Bar (Appears when flying with active bet) */}
+      {hasBet && state === 'flying' && !cashedOut && (
+        <div className="fixed bottom-[64px] left-3 right-3 z-40 sm:hidden animate-in slide-in-from-bottom-5 duration-200">
+          <button
+            onClick={handleCashout}
+            disabled={loading}
+            className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-500 hover:from-emerald-400 hover:to-teal-300 text-black font-black text-base shadow-[0_0_35px_rgba(16,185,129,0.7)] flex items-center justify-between border-2 border-white ring-4 ring-emerald-500/40 active:scale-95 animate-pulse"
+          >
+            <div className="flex items-center gap-2 text-right">
+              <Zap className="w-5 h-5 text-black animate-bounce" />
+              <div>
+                <div className="text-[11px] font-bold text-slate-950 leading-tight">برداشت فوری سود</div>
+                <div className="text-xs font-mono font-black text-emerald-950">({currentMultiplier.toFixed(2)}x)</div>
+              </div>
+            </div>
+            <div className="font-mono text-base font-black text-slate-950" dir="ltr">
+              {Math.floor(betAmount * currentMultiplier).toLocaleString('fa-IR')} ت
+            </div>
+          </button>
+        </div>
+      )}
     </div>
   );
 };

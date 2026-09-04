@@ -19,6 +19,7 @@ import {
 import { User, ActiveGameTab } from '../types';
 import { sound } from '../utils/audio';
 import { MobileDrawer } from './MobileDrawer';
+import { AnimatedBalance } from './AnimatedBalance';
 
 interface NavbarProps {
   user: User | null;
@@ -32,6 +33,8 @@ interface NavbarProps {
   onChangeTab: (tab: ActiveGameTab | 'admin') => void;
   onClaimFaucet: () => void;
   faucetLoading: boolean;
+  onOpenProfile?: () => void;
+  onOpenFairModal?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -46,6 +49,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   onChangeTab,
   onClaimFaucet,
   faucetLoading,
+  onOpenProfile,
+  onOpenFairModal,
 }) => {
   const [drawerOpen, setDrawerOpen] = useState(false);
 
@@ -94,15 +99,9 @@ export const Navbar: React.FC<NavbarProps> = ({
           <div className="flex items-center gap-2">
             {user ? (
               <>
-                {/* Minimal Mobile & Desktop Balance Pill */}
-                <div className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl bg-slate-900/90 border border-amber-500/30 shadow-inner">
-                  <Coins className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                  <div className="text-right">
-                    <div className="text-xs sm:text-sm font-extrabold text-amber-300 font-mono tracking-tight" dir="ltr">
-                      {user.balance.toLocaleString('fa-IR')}{' '}
-                      <span className="text-[10px] text-amber-400/80 font-normal">ت</span>
-                    </div>
-                  </div>
+                {/* Minimal Mobile & Desktop Balance Pill with Smooth Count-Up & Live Flash */}
+                <div className="flex items-center px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl bg-slate-900/90 border border-amber-500/30 shadow-inner">
+                  <AnimatedBalance balance={user.balance} size="sm" />
                 </div>
 
                 {/* Desktop-Only Admin Button */}
@@ -122,8 +121,17 @@ export const Navbar: React.FC<NavbarProps> = ({
 
                 {/* Desktop User Info & Logout */}
                 <div className="hidden md:flex items-center gap-2 px-2.5 py-1.5 rounded-xl bg-slate-900/80 border border-slate-800 text-xs text-slate-300">
-                  <UserIcon className="w-3.5 h-3.5 text-slate-400" />
-                  <span className="font-bold text-slate-200">{user.username}</span>
+                  <button
+                    onClick={() => {
+                      sound.chipClick();
+                      if (onOpenProfile) onOpenProfile();
+                    }}
+                    className="flex items-center gap-1.5 hover:text-amber-400 transition"
+                    title="مشاهده پروفایل و آمار VIP"
+                  >
+                    <UserIcon className="w-3.5 h-3.5 text-amber-400" />
+                    <span className="font-bold text-slate-200">{user.username}</span>
+                  </button>
                   <button
                     onClick={onLogout}
                     title="خروج از حساب"
@@ -155,6 +163,21 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <span>ورود ۲FA ادمین</span>
                 </button>
               </>
+            )}
+
+            {/* Desktop Provably Fair Button */}
+            {onOpenFairModal && (
+              <button
+                onClick={() => {
+                  sound.chipClick();
+                  onOpenFairModal();
+                }}
+                className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 text-xs font-medium transition"
+                title="اثبات منصفانه بودن بر پایه SHA-256"
+              >
+                <Shield className="w-3.5 h-3.5 text-emerald-400" />
+                <span>اثبات انصاف</span>
+              </button>
             )}
 
             {/* Desktop Liara Cloud Deployment Guide */}
@@ -255,6 +278,8 @@ export const Navbar: React.FC<NavbarProps> = ({
         onOpenLiaraGuide={onOpenLiaraGuide}
         onClaimFaucet={onClaimFaucet}
         faucetLoading={faucetLoading}
+        onOpenProfile={onOpenProfile}
+        onOpenFairModal={onOpenFairModal}
       />
     </>
   );

@@ -3,6 +3,7 @@ import { Coins, ChevronRight, HelpCircle, Flame, Award, Zap, CheckCircle2 } from
 import confetti from 'canvas-confetti';
 import { User } from '../../types';
 import { sound } from '../../utils/audio';
+import { CasinoChipSelector } from './CasinoChipSelector';
 
 interface CoinFlipGameProps {
   user: User | null;
@@ -233,41 +234,15 @@ export const CoinFlipGame: React.FC<CoinFlipGameProps> = ({ user, onUpdateUser, 
         </div>
 
         {/* Bet Input & Chips */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <label className="text-xs text-slate-300 font-semibold">مبلغ شرط (تومان):</label>
-            <div className="text-xs text-yellow-400 font-mono font-bold">
-              {betAmount.toLocaleString('fa-IR')} ت
-            </div>
-          </div>
-
-          <input
-            type="number"
-            min={1000}
-            step={1000}
-            disabled={flipping}
-            value={betAmount}
-            onChange={(e) => setBetAmount(Math.max(1000, Number(e.target.value)))}
-            className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-slate-100 font-mono text-sm focus:outline-none focus:border-yellow-500"
-          />
-
-          <div className="grid grid-cols-4 gap-1.5">
-            {[1000, 5000, 20000, 50000].map((val) => (
-              <button
-                key={val}
-                type="button"
-                disabled={flipping}
-                onClick={() => {
-                  sound.chipClick();
-                  setBetAmount(val);
-                }}
-                className="py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-mono text-slate-300 transition"
-              >
-                {(val / 1000).toLocaleString('fa-IR')}K
-              </button>
-            ))}
-          </div>
-        </div>
+        <CasinoChipSelector
+          betAmount={betAmount}
+          onBetChange={setBetAmount}
+          disabled={flipping}
+          userBalance={user?.balance || 500000}
+          minBet={1000}
+          label="مبلغ ورودی شیر یا خط"
+          accentColor="amber"
+        />
 
         {message && (
           <div className="p-2.5 rounded-xl bg-rose-950/60 border border-rose-500/40 text-rose-300 text-xs">

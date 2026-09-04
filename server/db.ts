@@ -307,7 +307,30 @@ try {
     if (!db.users.find(u => u.role === 'admin')) {
       db.users.push(defaultAdmin);
     }
+    // Seed initial lively bets if empty
+    if (!db.bets || db.bets.length === 0) {
+      db.bets = [
+        { id: 'b-seed-1', userId: 'seed-1', username: 'amir_teh', game: 'crash', betAmount: 50000, multiplier: 4.85, payout: 242500, won: true, timestamp: new Date(Date.now() - 40000).toISOString() },
+        { id: 'b-seed-2', userId: 'seed-2', username: 'sara_vip', game: 'roulette', betAmount: 20000, multiplier: 2.0, payout: 40000, won: true, timestamp: new Date(Date.now() - 110000).toISOString() },
+        { id: 'b-seed-3', userId: 'seed-3', username: 'reza_k', game: 'plinko', betAmount: 15000, multiplier: 9.0, payout: 135000, won: true, timestamp: new Date(Date.now() - 170000).toISOString() },
+        { id: 'b-seed-4', userId: 'seed-4', username: 'mehdi_7', game: 'mines', betAmount: 25000, multiplier: 3.48, payout: 87000, won: true, timestamp: new Date(Date.now() - 250000).toISOString() },
+        { id: 'b-seed-5', userId: 'seed-5', username: 'omid_99', game: 'slots', betAmount: 10000, multiplier: 12.0, payout: 120000, won: true, timestamp: new Date(Date.now() - 320000).toISOString() },
+        { id: 'b-seed-6', userId: 'seed-6', username: 'shayan_x', game: 'coinflip', betAmount: 100000, multiplier: 1.90, payout: 190000, won: true, timestamp: new Date(Date.now() - 410000).toISOString() },
+        { id: 'b-seed-7', userId: 'seed-7', username: 'alireza', game: 'crash', betAmount: 30000, multiplier: 8.20, payout: 246000, won: true, timestamp: new Date(Date.now() - 530000).toISOString() },
+        { id: 'b-seed-8', userId: 'seed-8', username: 'parham_t', game: 'dice', betAmount: 40000, multiplier: 1.95, payout: 78000, won: true, timestamp: new Date(Date.now() - 670000).toISOString() },
+      ];
+    }
   } else {
+    db.bets = [
+      { id: 'b-seed-1', userId: 'seed-1', username: 'amir_teh', game: 'crash', betAmount: 50000, multiplier: 4.85, payout: 242500, won: true, timestamp: new Date(Date.now() - 40000).toISOString() },
+      { id: 'b-seed-2', userId: 'seed-2', username: 'sara_vip', game: 'roulette', betAmount: 20000, multiplier: 2.0, payout: 40000, won: true, timestamp: new Date(Date.now() - 110000).toISOString() },
+      { id: 'b-seed-3', userId: 'seed-3', username: 'reza_k', game: 'plinko', betAmount: 15000, multiplier: 9.0, payout: 135000, won: true, timestamp: new Date(Date.now() - 170000).toISOString() },
+      { id: 'b-seed-4', userId: 'seed-4', username: 'mehdi_7', game: 'mines', betAmount: 25000, multiplier: 3.48, payout: 87000, won: true, timestamp: new Date(Date.now() - 250000).toISOString() },
+      { id: 'b-seed-5', userId: 'seed-5', username: 'omid_99', game: 'slots', betAmount: 10000, multiplier: 12.0, payout: 120000, won: true, timestamp: new Date(Date.now() - 320000).toISOString() },
+      { id: 'b-seed-6', userId: 'seed-6', username: 'shayan_x', game: 'coinflip', betAmount: 100000, multiplier: 1.90, payout: 190000, won: true, timestamp: new Date(Date.now() - 410000).toISOString() },
+      { id: 'b-seed-7', userId: 'seed-7', username: 'alireza', game: 'crash', betAmount: 30000, multiplier: 8.20, payout: 246000, won: true, timestamp: new Date(Date.now() - 530000).toISOString() },
+      { id: 'b-seed-8', userId: 'seed-8', username: 'parham_t', game: 'dice', betAmount: 40000, multiplier: 1.95, payout: 78000, won: true, timestamp: new Date(Date.now() - 670000).toISOString() },
+    ];
     saveDb();
   }
 } catch (err) {

@@ -27,6 +27,8 @@ interface MobileDrawerProps {
   onOpenLiaraGuide: () => void;
   onClaimFaucet: () => void;
   faucetLoading: boolean;
+  onOpenProfile?: () => void;
+  onOpenFairModal?: () => void;
 }
 
 export const MobileDrawer: React.FC<MobileDrawerProps> = ({
@@ -41,6 +43,8 @@ export const MobileDrawer: React.FC<MobileDrawerProps> = ({
   onOpenLiaraGuide,
   onClaimFaucet,
   faucetLoading,
+  onOpenProfile,
+  onOpenFairModal,
 }) => {
   if (!isOpen) return null;
 
@@ -105,11 +109,37 @@ export const MobileDrawer: React.FC<MobileDrawerProps> = ({
                       {user.balance.toLocaleString('fa-IR')} <span className="text-xs font-normal">تومان</span>
                     </span>
                   </div>
-                  <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono">
-                    فعال
-                  </span>
+                  {onOpenProfile && (
+                    <button
+                      onClick={() => {
+                        onClose();
+                        onOpenProfile();
+                      }}
+                      className="text-[11px] px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-bold border border-amber-500/30 transition"
+                    >
+                      سطح VIP و آمار
+                    </button>
+                  )}
                 </div>
               </div>
+
+              {/* Quick Faucet Claim */}
+              <button
+                onClick={() => {
+                  onClose();
+                  onClaimFaucet();
+                }}
+                disabled={faucetLoading}
+                className="w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-bold transition"
+              >
+                <div className="flex items-center gap-2">
+                  <Coins className="w-4 h-4 text-amber-400" />
+                  <span>دریافت شارژ تستی رایگان</span>
+                </div>
+                <span className="text-[10px] bg-amber-500/20 px-2 py-0.5 rounded-full text-amber-300 font-mono">
+                  +۵۰,۰۰۰ ت
+                </span>
+              </button>
 
               {/* Admin Button */}
               {user.role === 'admin' && (
@@ -187,6 +217,25 @@ export const MobileDrawer: React.FC<MobileDrawerProps> = ({
                 {soundEnabled ? 'روشن' : 'خاموش'}
               </span>
             </button>
+
+            {/* Provably Fair Modal Trigger */}
+            {onOpenFairModal && (
+              <button
+                onClick={() => {
+                  onClose();
+                  onOpenFairModal();
+                }}
+                className="w-full flex items-center justify-between p-3 rounded-xl bg-slate-900/80 hover:bg-slate-900 text-emerald-300 border border-emerald-500/20 text-xs font-medium transition"
+              >
+                <div className="flex items-center gap-2.5">
+                  <Shield className="w-4 h-4 text-emerald-400" />
+                  <span>اثبات منصفانه بودن (Provably Fair)</span>
+                </div>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950/60 text-emerald-400 font-mono">
+                  SHA-256
+                </span>
+              </button>
+            )}
 
             {/* Liara Cloud Deployment Guide */}
             <button
